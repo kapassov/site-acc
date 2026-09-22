@@ -1,0 +1,40 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+
+# Runtime configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime state, exports and uploads
+.runtime-cache/
+.dependencies-installed
+data/
+public/uploads/
+*.csv
+*.xlsx
+*.xls
+*.tgz
+*.tar.gz
+*.dump
+*.sql.gz
+
+# Logs and local tooling
+*.log
+.codex-*
+test-output.txt
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

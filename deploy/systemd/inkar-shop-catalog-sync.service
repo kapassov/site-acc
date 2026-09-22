@@ -1,0 +1,27 @@
+[Unit]
+Description=Replicate the complete Medusa catalogue to Inkar Postgres
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/var/www/inkar-shop/scripts/sync-medusa-catalog.mjs
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/inkar-shop
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/inkar-shop/inkar-shop.env
+# Daily catalogue writer. Prices and product content come from Medusa; live
+# pharmacy stock is resolved separately through Daribar v3 at request time.
+# Never enable this together with the legacy Standard N refresh writers.
+ExecStart=/usr/bin/node scripts/sync-medusa-catalog.mjs --apply --page-size 500 --mark-missing-inactive
+TimeoutStartSec=90min
+Nice=10
+StateDirectory=inkar-shop
+StateDirectoryMode=0750
+
+# DATABASE_URL and the Medusa Store API settings are supplied by EnvironmentFile.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

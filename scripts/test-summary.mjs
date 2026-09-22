@@ -1,0 +1,10 @@
+import { run } from 'node:test';
+import { readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const scan=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?scan(join(d,e.name)):/\.test\.(mjs|ts)$/.test(e.name)?[join(d,e.name)]:[]);
+const failures=[];let passed=0;
+const stream=run({files:[...scan('tests'),...scan('src/lib')],concurrency:4});
+stream.on('test:pass',()=>passed++);
+stream.on('test:fail',e=>failures.push({name:e.name,file:e.file,line:e.line,error:String(e.details?.error?.cause?.message||e.details?.error?.message||'failed').slice(0,400)}));
+stream.on('end',()=>{const r={passed,failed:failures.length,failures};writeFileSync('test-summary.json',JSON.stringify(r,null,2));console.log(JSON.stringify(r));process.exitCode=failures.length?1:0;});
+stream.resume();

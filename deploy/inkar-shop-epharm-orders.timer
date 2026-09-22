@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll durable ACC / PharmaPay order queues
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=10s
+AccuracySec=1s
+Unit=inkar-shop-epharm-orders.service
+
+[Install]
+WantedBy=timers.target

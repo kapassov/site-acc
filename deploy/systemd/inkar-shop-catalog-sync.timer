@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh the Medusa product catalogue once per day
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Almaty
+RandomizedDelaySec=5min
+AccuracySec=1min
+Persistent=true
+Unit=inkar-shop-catalog-sync.service
+
+[Install]
+WantedBy=timers.target

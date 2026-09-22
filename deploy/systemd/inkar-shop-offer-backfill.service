@@ -1,0 +1,34 @@
+[Unit]
+Description=One-time full Inkar per-pharmacy offer backfill from Medusa
+Wants=network-online.target
+After=network-online.target inkar-shop-catalog-sync.service
+ConditionPathExists=/var/www/inkar-shop/scripts/sync-medusa-pharmacy-offers.mjs
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/inkar-shop
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/inkar-shop/inkar-shop.env
+ExecStart=/usr/bin/node scripts/sync-medusa-pharmacy-offers.mjs --apply --full --concurrency 3 --timeout-ms 10000 --attempts 2 --batch-delay-ms 150
+
+# This is intentionally not the ten-minute bounded worker. A complete pass can
+# take hours when Medusa is slow, and must not be killed at the 30-minute mark.
+TimeoutStartSec=infinity
+TimeoutStopSec=2min
+Restart=on-failure
+RestartSec=2min
+Nice=15
+
+# The worker commits one product checkpoint at a time. On restart, untouched
+# products sort before old attempts. Its Postgres advisory lock also excludes
+# catalogue sync and every other offer worker across processes/hosts.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+# Deliberately no [Install] section: this is a manually started one-time job,
+# not a boot service or timer.
