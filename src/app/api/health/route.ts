@@ -7,6 +7,11 @@ import {
   getMedusaProducts,
   getMedusaRuntimeStats,
 } from "@/lib/medusa";
+import { storefrontCatalogProvider } from "@/lib/catalog-provider";
+import { getDaribarProducts } from "@/lib/daribar/catalog";
+import { readDaribarCatalogDatabase } from "@/lib/daribar/catalog-db";
+import { getTypesenseIndexStatus } from "@/lib/search/typesense-client";
+import { getStorefrontNavigation } from "@/lib/storefront-catalog";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,6 +30,7 @@ export async function GET(request: Request) {
   const warm = query.get("warm") === "1";
   const deep = warm || query.get("deep") === "1";
   const startedAt = Date.now();
+  const catalogProvider = storefrontCatalogProvider();
 
   if (!deep) {
     return NextResponse.json(
@@ -36,6 +42,7 @@ export async function GET(request: Request) {
         degraded: false,
         scope: "liveness",
         app: "inkar-shop",
+        catalogProvider,
         medusa: null,
         postgres: null,
         warmup: null,
@@ -48,18 +55,28 @@ export async function GET(request: Request) {
   }
 
   const warmed = warm
-    ? await Promise.allSettled([getMedusaProducts(100), getCategoryTree()])
+    ? await Promise.allSettled(catalogProvider === "daribar"
+      ? [getDaribarProducts(100), getStorefrontNavigation()]
+      : [getMedusaProducts(100), getCategoryTree()])
     : null;
   // Run the independent probes together, but only after warmup so we do not
   // add a third concurrent Medusa call while an already slow backend recovers.
-  const [connection, postgres] = await Promise.all([
-    checkMedusaConnection(),
+  const [connection, postgres, daribarCatalog, typesense] = await Promise.all([
+    catalogProvider === "daribar" ? Promise.resolve({ configured: false, reachable: false, stale: false }) : checkMedusaConnection(),
     inspectPostgresHealth(),
+    catalogProvider === "daribar"
+      ? readDaribarCatalogDatabase().then((snapshot) => ({ ready: true, runId: snapshot.runId,
+        generatedAt: snapshot.generatedAt, count: snapshot.products.length })).catch(() => ({ ready: false }))
+      : Promise.resolve({ ready: null }),
+    catalogProvider === "daribar"
+      ? getTypesenseIndexStatus().then((status) => ({ ready: true, generatedAt: status.metadata.generatedAt,
+        count: status.metadata.documentCount, stale: status.stale })).catch(() => ({ ready: false }))
+      : Promise.resolve({ ready: null }),
   ]);
 
   const postgresRequired = postgres.configured
     || String(process.env.CATALOG_READ_SOURCE || "").trim().toLowerCase() === "postgres";
-  const medusaRequired = connection.configured;
+  const medusaRequired = catalogProvider !== "daribar" && connection.configured;
   const readiness = dependencyReadiness({
     postgresRequired,
     postgresReady: postgres.ready,
@@ -67,7 +84,8 @@ export async function GET(request: Request) {
     medusaReachable: connection.reachable,
     medusaStale: connection.stale === true,
   });
-  const ready = readiness.ready;
+  const daribarReady = catalogProvider !== "daribar" || (daribarCatalog.ready === true && typesense.ready === true);
+  const ready = readiness.ready && daribarReady;
   const products = warmed?.[0]?.status === "fulfilled" ? warmed[0].value.length : null;
   const categories = warmed?.[1]?.status === "fulfilled" ? warmed[1].value.length : null;
 
@@ -79,11 +97,14 @@ export async function GET(request: Request) {
       degraded: readiness.degraded,
       scope: "readiness",
       app: "inkar-shop",
+      catalogProvider,
       medusa: connection,
       postgres,
       dependencies: {
         medusa: { required: medusaRequired, ...connection },
         postgres: { required: postgresRequired, ...postgres },
+        daribarCatalog: { required: catalogProvider === "daribar", ...daribarCatalog },
+        typesense: { required: catalogProvider === "daribar", ...typesense },
       },
       warmup: warm ? { products, categories } : null,
       runtime: getMedusaRuntimeStats(),

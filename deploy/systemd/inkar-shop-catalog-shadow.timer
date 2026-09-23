@@ -1,0 +1,12 @@
+[Unit]
+Description=Regular shadow catalogue comparison
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 Asia/Almaty
+RandomizedDelaySec=10m
+Persistent=true
+Unit=inkar-shop-catalog-shadow.service
+
+[Install]
+WantedBy=timers.target
+

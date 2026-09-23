@@ -9,12 +9,6 @@ const HANDLE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/;
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   if (!HANDLE.test(slug)) return NextResponse.json({ product: null }, { status: 400 });
-  if (slug.startsWith("daribar-")) {
-    return NextResponse.json(
-      { product: null },
-      { status: 404, headers: { "cache-control": "no-store" } },
-    );
-  }
   try {
     const product = await getProductBySlug(slug);
     if (!product) {

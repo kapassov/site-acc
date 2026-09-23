@@ -862,10 +862,7 @@ export async function queryLocalCatalog(query: CatalogQuery, options: { productI
         AND offer.source_snapshot_id = source_product.metadata->>'standard_n_snapshot_id'
         AND ${medusaStockPriceSql("source_product")} IS NOT NULL
       GROUP BY offer.product_id
-    ) selected_offer ON selected_offer.product_id = product.id` : `JOIN catalog_offer_sync_state storefront_offer_state
-      ON storefront_offer_state.product_id = product.id
-     AND storefront_offer_state.last_success_at IS NOT NULL
-     AND storefront_offer_state.last_offer_count > 0`;
+    ) selected_offer ON selected_offer.product_id = product.id` : "";
     // The mapping table enforces one enabled row per product/variant and the
     // imported ASS catalogue currently has one active mapped variant per
     // product, so a direct indexed join avoids a global DISTINCT scan.

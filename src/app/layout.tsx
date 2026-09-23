@@ -8,6 +8,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartProvider } from "@/lib/cart/CartContext";
+import { storefrontCatalogProvider } from "@/lib/catalog-provider";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { FavoritesProvider } from "@/lib/favorites/FavoritesContext";
@@ -62,6 +63,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const savedLanguage = (await cookies()).get("inkar-lang-v1")?.value;
   const initialLang: Lang = savedLanguage === "kz" || savedLanguage === "en" ? savedLanguage : "ru";
   const documentLang = initialLang === "kz" ? "kk" : initialLang;
+  const cartProvider = storefrontCatalogProvider() === "daribar" ? "daribar" : "medusa";
   return (
     <html lang={documentLang} style={FONT_VARS} data-scroll-behavior="smooth">
       <body className="relative isolate flex min-h-screen flex-col overflow-x-clip bg-[#f7fbf8] font-sans text-slate-900 antialiased">
@@ -75,7 +77,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <AuthProvider>
               <PushProvider>
               <FavoritesProvider>
-                <CartProvider>
+                <CartProvider provider={cartProvider}>
                   <AnalyticsProvider />
                   <TopBar />
                   <Header />

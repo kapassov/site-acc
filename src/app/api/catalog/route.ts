@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMedusaCatalogPage } from "@/lib/medusa-catalog";
+import { getStorefrontCatalogPage, storefrontCatalogSource } from "@/lib/storefront-catalog";
 import { CatalogQueryError, parseCatalogQuery, cataloguePagination } from "@/lib/catalog-query";
 import { resolveMedusaCategoryHandle } from "@/lib/category-aliases";
 
@@ -15,7 +15,13 @@ export async function GET(request: Request) {
     const query = parseCatalogQuery(params);
     const pharmacies = [...new Set(params.getAll("pharmacy").flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean))];
     if (pharmacies.length > 8 || pharmacies.some((id) => !/^sloc_[A-Za-z0-9]+$/.test(id))) throw new CatalogQueryError("pharmacy");
-    const page = await getMedusaCatalogPage(query, { exact: params.get("exact") === "1", pharmacies });
+    const source = storefrontCatalogSource();
+    const page = await getStorefrontCatalogPage(query, {
+      exact: params.get("exact") === "1",
+      pharmacies,
+      city: params.get("city") || undefined,
+    });
+    const searchEngine = "searchEngine" in page ? page.searchEngine : undefined;
     const pagination = cataloguePagination(page.count, query);
     return NextResponse.json({
       products: page.products,
@@ -23,20 +29,22 @@ export async function GET(request: Request) {
       schemaVersion: 2, count: page.count, catalogTotal: page.catalogTotal,
       limit: query.limit, offset: query.offset, page: query.page, hasMore: pagination.hasNext,
       nextOffset: pagination.nextOffset, pagination,
-      filters: { ...query, category: query.category ? resolveMedusaCategoryHandle(query.category) : null },
+      filters: { ...query, category: query.category
+        ? (source === "medusa" ? resolveMedusaCategoryHandle(query.category) : query.category) : null },
       meta: {
-        source: "medusa", sourceMode: page.sourceMode, searchEngine: "medusa_title_index",
+        source, sourceMode: page.sourceMode,
+        searchEngine: source === "daribar" ? (searchEngine || "typesense") : "medusa_title_index",
         ...(page.search ? { search: page.search } : {}), pharmacies,
-        priceScope: pharmacies.length ? "selected_pharmacy_price" : "medusa_last_known_price",
-        availabilityScope: pharmacies.length ? "selected_pharmacy_stock" : "fresh_guarded_medusa_stock",
+        priceScope: source === "daribar" ? "daribar_catalog_price" : (pharmacies.length ? "selected_pharmacy_price" : "medusa_last_known_price"),
+        availabilityScope: source === "daribar" ? "live_checkout_only" : (pharmacies.length ? "selected_pharmacy_stock" : "fresh_guarded_medusa_stock"),
         generatedAt: page.generatedAt, sourceCount: page.catalogTotal, loadedCount: page.products.length,
         complete: page.complete, stale: page.stale, degraded: page.stale, dataState: page.stale ? "stale" : "fresh",
         coverage: "full_catalog", responseScope: "bounded_page",
-        facetScope: query.includeFacets ? "full_filtered_medusa_catalog" : "omitted", facetCountsExact: page.complete,
+        facetScope: query.includeFacets ? `full_filtered_${source}_catalog` : "omitted", facetCountsExact: page.complete,
       },
-    }, { headers: { ...(page.stale ? NO_STORE : PUBLIC_CATALOG_CACHE), "x-catalog-source": "medusa", "x-data-state": page.stale ? "stale" : "fresh" } });
+    }, { headers: { ...(page.stale ? NO_STORE : PUBLIC_CATALOG_CACHE), "x-catalog-source": source, "x-data-state": page.stale ? "stale" : "fresh" } });
   } catch (error) {
     if (error instanceof CatalogQueryError) return NextResponse.json({ products: [], error: { code: error.code, field: error.field } }, { status: 400, headers: NO_STORE });
-    return NextResponse.json({ products: [], error: { code: "medusa_catalog_unavailable" } }, { status: 503, headers: NO_STORE });
+    return NextResponse.json({ products: [], error: { code: "catalog_unavailable" } }, { status: 503, headers: NO_STORE });
   }
 }

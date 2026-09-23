@@ -90,7 +90,7 @@ test("Daribar product IDs bind one validated SKU to product, variant and slug", 
   assert.throws(() => daribarProductId("../../admin"), /invalid_daribar_sku/);
 });
 
-test("catalog and search retain pharmacy filters while isolating the legacy Daribar adapter", () => {
+test("catalog and search route through the rollback-safe provider facade", () => {
   const catalog = readFileSync("src/lib/daribar/catalog.ts", "utf8");
   const route = readFileSync("src/app/api/catalog/route.ts", "utf8");
   const search = readFileSync("src/app/api/search/route.ts", "utf8");
@@ -100,11 +100,11 @@ test("catalog and search retain pharmacy filters while isolating the legacy Dari
   assert.match(catalog, /конфиг-рацион/);
   assert.match(catalog, /"\/api\/v1\/search\/in_pharmacy"/);
   assert.match(catalog, /\/api\/media\/daribar\?sku=/);
-  assert.match(route, /getMedusaCatalogPage/);
-  assert.match(search, /getMedusaCatalogPage/);
+  assert.match(route, /getStorefrontCatalogPage/);
+  assert.match(search, /getStorefrontCatalogPage/);
   assert.match(route, /selected_pharmacy_stock/);
-  assert.doesNotMatch(route, /getDaribar/);
-  assert.doesNotMatch(search, /getDaribar/);
+  assert.match(route, /storefrontCatalogSource/);
+  assert.match(search, /storefrontCatalogSource/);
   assert.match(catalogView, /params\.append\("pharmacy", pharmacy\)/);
   assert.doesNotMatch(route, /DARIBAR_SERVICE_TOKEN/);
   assert.doesNotMatch(search, /DARIBAR_SERVICE_TOKEN/);

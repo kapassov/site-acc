@@ -1,0 +1,21 @@
+[Unit]
+Description=Inkar atomic Daribar catalogue and Typesense synchronization
+After=network-online.target postgresql.service typesense-server.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=inkar-shop
+Group=inkar-shop
+WorkingDirectory=/var/www/inkar-shop/current
+EnvironmentFile=/etc/inkar-shop.env
+ExecStart=/usr/bin/node scripts/sync-daribar-stack.mjs
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/inkar-shop /var/www/inkar-shop/shared/data
+

@@ -20,6 +20,7 @@ import {
   DaribarSnapshotFileError,
   readDaribarCatalogSnapshot,
 } from "./snapshot-file.ts";
+import { readDaribarCatalogDatabase } from "./catalog-db.ts";
 
 // Product normalization excludes «конфиг-рацион» and exposes images only through /api/media/daribar?sku=.
 
@@ -68,7 +69,7 @@ type DaribarSnapshot = DaribarCollectedPages & {
   products: Product[];
   generatedAt: string;
   stale: boolean;
-  sourceMode: "snapshot_file" | "priced_subset" | "live_keyword" | "live_full" | "indexed_snapshot";
+  sourceMode: "postgres_snapshot" | "snapshot_file" | "priced_subset" | "live_keyword" | "live_full" | "indexed_snapshot";
   search?: ProductSearchMetadata;
   searchEngine?: ProductSearchEngine;
 };
@@ -87,7 +88,7 @@ export type DaribarCatalogPage = {
   generatedAt: string;
   complete: boolean;
   stale: boolean;
-  sourceMode: "snapshot_file" | "live_full" | "live_keyword" | "selected_pharmacies" | "priced_subset" | "indexed_snapshot";
+  sourceMode: "postgres_snapshot" | "snapshot_file" | "live_full" | "live_keyword" | "selected_pharmacies" | "priced_subset" | "indexed_snapshot";
   search?: ProductSearchMetadata;
   searchEngine?: ProductSearchEngine;
 };
@@ -279,9 +280,27 @@ async function cachedSnapshot(key: string, loader: () => Promise<DaribarSnapshot
   return promise;
 }
 
-async function categorySnapshot(city?: string): Promise<DaribarSnapshot> {
+async function categorySnapshot(city?: string, requireComplete = false): Promise<DaribarSnapshot> {
   const requestedCity = daribarKeywordCity(city);
+  const databaseFirst = String(process.env.DARIBAR_CATALOG_READ_SOURCE || "snapshot").trim().toLowerCase() === "postgres";
   try {
+    if (databaseFirst) {
+      const source = await readDaribarCatalogDatabase();
+      if (daribarKeywordCity(source.city) !== requestedCity) {
+        throw new DaribarCatalogError("daribar_snapshot_city_mismatch");
+      }
+      rememberProducts(source.products);
+      return {
+        products: source.products,
+        rawProducts: [],
+        rawCount: source.sourceCount,
+        reportedTotal: source.sourceCount,
+        pages: 1,
+        generatedAt: source.generatedAt,
+        stale: false,
+        sourceMode: "postgres_snapshot",
+      };
+    }
     // Validate file presence and hard age before consulting the mapped cache.
     // The file is built only from /api/v1/search/category?category=145;
     // loading the 29k-row authority on a web request would take many minutes.
@@ -301,8 +320,10 @@ async function categorySnapshot(city?: string): Promise<DaribarSnapshot> {
     return { ...mapped, generatedAt: source.generatedAt, stale: source.stale };
   } catch (error) {
     if (error instanceof DaribarCatalogError) throw error;
+    if (databaseFirst) throw new DaribarCatalogError("daribar_catalog_database_unavailable");
     if (error instanceof DaribarSnapshotFileError) {
       if (error.code === "daribar_snapshot_file_missing" || error.code === "daribar_snapshot_expired") {
+        if (requireComplete) throw new DaribarCatalogError(error.code, error.status);
         return pricedSubsetSnapshot(city);
       }
       throw new DaribarCatalogError(error.code, error.status);
@@ -349,29 +370,21 @@ async function productSearchSnapshot(
   let sourceProducts: Product[] | undefined;
   if (configured) {
     try {
-      const sourceFile = await readDaribarCatalogSnapshot();
-      const full = await categorySnapshot(sourceFile.city);
-      if (full.sourceMode !== "snapshot_file") throw new DaribarCatalogError("daribar_search_complete_snapshot_required");
+      const full = await categorySnapshot(city, true);
+      if (!["postgres_snapshot", "snapshot_file"].includes(full.sourceMode)) {
+        throw new DaribarCatalogError("daribar_search_complete_snapshot_required");
+      }
       sourceProducts = full.products;
       // SKU lookups support product/checkout internals, but are never fuzzy-corrected.
       const skuMatch = full.products.find(product => product.sku === q);
-      if (skuMatch && daribarKeywordCity(sourceFile.city) === daribarKeywordCity(city)) return {
+      if (skuMatch) return {
         ...full, products: [skuMatch], searchEngine: "daribar",
         search: { query: q, matchedQuery: null, matchType: "exact", degraded: false },
       };
       const indexed = await cachedSnapshot(`indexed:${daribarKeywordCity(city)}:${full.generatedAt}:${options.exact ? 1 : 0}:${q.toLocaleLowerCase("ru")}`, async () => {
         const result = await searchDaribarSnapshot({
-          query: q, products: full.products, city: sourceFile.city, generatedAt: full.generatedAt, exact: options.exact,
+          query: q, products: full.products, city: city || daribarDefaultCity(), generatedAt: full.generatedAt, exact: options.exact,
         });
-        if (daribarKeywordCity(sourceFile.city) !== daribarKeywordCity(city) && result.products.length > 0) {
-          const live = await Promise.all(daribarSearchLookupNames(result.products, q).map(name => keywordSnapshot(name, city)));
-          const byId = new Map(guardNativeDaribarSearch(live.flatMap(snapshot => snapshot.products), q, options.exact, { resolvedProducts: result.products })
-            .map(product => [product.id, product]));
-          const products = result.products.flatMap(product => byId.has(product.id) ? [byId.get(product.id)!] : []);
-          return { ...full, products, generatedAt: live[0]?.generatedAt || full.generatedAt,
-            stale: result.stale || live.some(snapshot => snapshot.stale), sourceMode: "live_keyword",
-            search: { ...result.search, ...(products.length ? {} : { matchType: "none" as const, matchedQuery: null }) }, searchEngine: "typesense" };
-        }
         return { ...full, products: result.products, stale: full.stale || result.stale,
           sourceMode: "indexed_snapshot", search: result.search, searchEngine: "typesense" };
       });
@@ -646,8 +659,8 @@ export async function getDaribarProductBySlug(slug: string, city?: string): Prom
   if (!sku) return null;
   let exact = cachedProduct(sku);
   if (!exact) {
-    const found = await searchDaribarProducts(sku, 100, city);
-    exact = found.find((product) => product.sku === sku) || null;
+    const snapshot = await categorySnapshot(city);
+    exact = snapshot.products.find((product) => product.sku === sku) || null;
   }
   try {
     const payload = await daribarJson<DaribarProductResponse>("/api/v2/products/cache/get", {

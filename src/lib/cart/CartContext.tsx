@@ -6,7 +6,7 @@ import {
 import type { Product } from "@/lib/types";
 import { trackEvent } from "@/lib/analytics/client";
 import { browserUuidV4 } from "@/lib/client-uuid";
-import { boundedCartQuantity, validMedusaCartItem } from "./medusa-cart";
+import { boundedCartQuantity, validCartItemForProvider, type CartCatalogProvider } from "./medusa-cart";
 
 export interface CartItem {
   product: Product;
@@ -44,17 +44,33 @@ const CartContext = createContext<CartContextValue | null>(null);
 const STORAGE_KEY = "inkar-cart-v4-medusa";
 const LEGACY_STORAGE_KEY = "inkar-cart-v3-daribar";
 const MIGRATION_NOTICE_KEY = "inkar-cart-migration-v4-medusa";
+const CART_INSTANCE_KEY = "inkar-cart-instance-v4-medusa";
+function storageKeys(provider: CartCatalogProvider) {
+  if (provider === "medusa") return {
+    cart: STORAGE_KEY,
+    legacy: LEGACY_STORAGE_KEY,
+    notice: MIGRATION_NOTICE_KEY,
+    instance: CART_INSTANCE_KEY,
+  };
+  return {
+    cart: "inkar-cart-v5-daribar",
+    legacy: STORAGE_KEY,
+    notice: "inkar-cart-migration-v5-daribar",
+    instance: "inkar-cart-instance-v5-daribar",
+  };
+}
 // Rotate only the cart identity (not its items) after the checkout recovery
 // release. This prevents an old server-side uncertain attempt from conflicting
 // with the customer's new, freshly quoted request.
-const CART_INSTANCE_KEY = "inkar-cart-instance-v4-medusa";
 const CART_INSTANCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function freshCartInstanceId(): string {
   return browserUuidV4();
 }
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function CartProvider({ children, provider = "medusa" }: { children: ReactNode; provider?: CartCatalogProvider }) {
+  const { cart: storageKey, legacy: legacyStorageKey, notice: migrationNoticeKey,
+    instance: cartInstanceKey } = storageKeys(provider);
   const [items, setItems] = useState<CartItem[]>([]);
   const [unselected, setUnselected] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -66,16 +82,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- разовая гидратация корзины из localStorage после маунта */
     try {
-      const storedInstanceId = localStorage.getItem(CART_INSTANCE_KEY) || "";
+      const storedInstanceId = localStorage.getItem(cartInstanceKey) || "";
       const instanceId = CART_INSTANCE_ID.test(storedInstanceId) ? storedInstanceId : freshCartInstanceId();
-      localStorage.setItem(CART_INSTANCE_KEY, instanceId);
+      localStorage.setItem(cartInstanceKey, instanceId);
       setCartInstanceId(instanceId);
-      const currentRaw = localStorage.getItem(STORAGE_KEY);
-      const noticeState = localStorage.getItem(MIGRATION_NOTICE_KEY);
+      const currentRaw = localStorage.getItem(storageKey);
+      const noticeState = localStorage.getItem(migrationNoticeKey);
       let showMigrationNotice = noticeState === "pending";
       // Read the old cart even when the new empty cart was already persisted.
       // It remains untouched; acknowledgement hides only this explanation.
-      const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      const legacyRaw = localStorage.getItem(legacyStorageKey);
       if (legacyRaw && noticeState !== "acknowledged") {
         try {
           const previous = JSON.parse(legacyRaw) as unknown;
@@ -85,46 +101,46 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (currentRaw) {
         const parsed = JSON.parse(currentRaw) as unknown;
         const values = Array.isArray(parsed) ? parsed : [];
-        const validItems = values.filter((value): value is CartItem => validMedusaCartItem(value));
+        const validItems = values.filter((value): value is CartItem => validCartItemForProvider(value, provider));
         setItems(validItems);
         if (validItems.length !== values.length) showMigrationNotice = true;
       }
       if (showMigrationNotice) {
         setLegacyItemsRemoved(true);
-        try { localStorage.setItem(MIGRATION_NOTICE_KEY, "pending"); } catch { /* Keep the visible notice if storage is unavailable. */ }
+        try { localStorage.setItem(migrationNoticeKey, "pending"); } catch { /* Keep the visible notice if storage is unavailable. */ }
       }
     } catch {
       /* ignore */
     }
     setHydrated(true);
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, []);
+  }, [cartInstanceKey, legacyStorageKey, migrationNoticeKey, provider, storageKey]);
 
   useEffect(() => {
     if (!hydrated) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      localStorage.setItem(storageKey, JSON.stringify(items));
     } catch {
       /* ignore */
     }
-    // A browser cart is only a draft. Medusa validates current prices and
-    // reserves inventory once, at checkout, using the idempotent order bridge.
-  }, [items, hydrated]);
+    // A browser cart is only a draft. The server validates catalogue prices
+    // and live Daribar stock for the complete basket before checkout.
+  }, [items, hydrated, storageKey]);
 
   const dismissLegacyNotice = useCallback(() => {
-    try { localStorage.setItem(MIGRATION_NOTICE_KEY, "acknowledged"); } catch { /* A failed write may show the notice again on reload. */ }
+    try { localStorage.setItem(migrationNoticeKey, "acknowledged"); } catch { /* A failed write may show the notice again on reload. */ }
     setLegacyItemsRemoved(false);
-  }, []);
+  }, [migrationNoticeKey]);
 
   const rotateCartInstance = useCallback(() => {
     const next = freshCartInstanceId();
     setCartInstanceId(next);
-    try { localStorage.setItem(CART_INSTANCE_KEY, next); } catch { /* ignore */ }
-  }, []);
+    try { localStorage.setItem(cartInstanceKey, next); } catch { /* ignore */ }
+  }, [cartInstanceKey]);
 
   const add = useCallback((product: Product, qty = 1) => {
     qty = boundedCartQuantity(qty);
-    if (!validMedusaCartItem({ product, qty })) return;
+    if (!validCartItemForProvider({ product, qty }, provider)) return;
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.product.id === product.id);
       if (idx >= 0) {
@@ -141,20 +157,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
       quantity: qty,
       price: product.price,
     });
-  }, [rotateCartInstance]);
+  }, [provider, rotateCartInstance]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === CART_INSTANCE_KEY && event.newValue && CART_INSTANCE_ID.test(event.newValue)) {
+      if (event.key === cartInstanceKey && event.newValue && CART_INSTANCE_ID.test(event.newValue)) {
         setCartInstanceId(event.newValue);
       }
-      if (event.key === MIGRATION_NOTICE_KEY && ["pending", "acknowledged"].includes(event.newValue || "")) {
+      if (event.key === migrationNoticeKey && ["pending", "acknowledged"].includes(event.newValue || "")) {
         setLegacyItemsRemoved(event.newValue === "pending");
       }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [cartInstanceKey, migrationNoticeKey]);
 
   const remove = useCallback((id: string, reason = "remove") => {
     trackEvent("cart_item_removed", { productId: id, reason });
@@ -164,7 +180,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [rotateCartInstance]);
 
   const restore = useCallback((item: CartItem, index?: number) => {
-    if (!validMedusaCartItem(item)) return;
+    if (!validCartItemForProvider(item, provider)) return;
     setItems((previous) => {
       const withoutDuplicate = previous.filter((entry) => entry.product.id !== item.product.id);
       const next = [...withoutDuplicate];
@@ -174,7 +190,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
     rotateCartInstance();
     trackEvent("cart_item_added", { productId: item.product.id, quantity: item.qty, reason: "undo_remove" });
-  }, [rotateCartInstance]);
+  }, [provider, rotateCartInstance]);
 
   const setQty = useCallback((id: string, qty: number) => {
     if (!Number.isSafeInteger(qty)) return;

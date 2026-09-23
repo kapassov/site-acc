@@ -4,11 +4,11 @@ import { resolveMedusaCategoryHandle } from "@/lib/category-aliases";
 import { CatalogView } from "@/components/catalog/CatalogView";
 import { getCategoryName } from "@/lib/api";
 import { parseCatalogQuery } from "@/lib/catalog-query";
-import { getMedusaCatalogPage, getMedusaNavigation } from "@/lib/medusa-catalog";
+import { getStorefrontCatalogPage, getStorefrontNavigation, storefrontCatalogSource } from "@/lib/storefront-catalog";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const canonicalSlug = resolveMedusaCategoryHandle(slug);
+  const canonicalSlug = storefrontCatalogSource() === "daribar" ? slug : resolveMedusaCategoryHandle(slug);
   const name = await getCategoryName(canonicalSlug);
   return {
     title: name || "Каталог",
@@ -21,7 +21,7 @@ export default async function CategoryPage({ params, searchParams }: { params: P
   const { slug } = await params;
   const rawSearch = await searchParams;
   const requestedPage = Array.isArray(rawSearch.page) ? rawSearch.page[0] : rawSearch.page;
-  const canonicalSlug = resolveMedusaCategoryHandle(slug);
+  const canonicalSlug = storefrontCatalogSource() === "daribar" ? slug : resolveMedusaCategoryHandle(slug);
   if (canonicalSlug !== slug) redirect(`/catalog/${canonicalSlug}`);
   const categoryName = await getCategoryName(canonicalSlug);
   if (!categoryName) notFound();
@@ -29,8 +29,8 @@ export default async function CategoryPage({ params, searchParams }: { params: P
   if (requestedPage && /^\d{1,6}$/.test(requestedPage)) queryParams.set("page", requestedPage);
   const initialQuery = parseCatalogQuery(queryParams);
   const [catalogPage, tree] = await Promise.all([
-    getMedusaCatalogPage(initialQuery).catch(() => null),
-    getMedusaNavigation().catch(() => []),
+    getStorefrontCatalogPage(initialQuery).catch(() => null),
+    getStorefrontNavigation().catch(() => []),
   ]);
 
   return (

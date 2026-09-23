@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Daribar catalogue and Typesense refresh
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Almaty
+RandomizedDelaySec=15m
+Persistent=true
+Unit=inkar-shop-daribar-sync.service
+
+[Install]
+WantedBy=timers.target
+

@@ -115,6 +115,9 @@ export async function POST(req: Request) {
     if (verifiedQuote.fulfillment !== fulfillment) return respond({ error: "quote_fulfillment_mismatch" }, 409);
     if (cityKey(city) !== cityKey(verifiedQuote.pharmacy.city)) return respond({ error: "quote_city_mismatch" }, 409);
     const daribarCommerceEnabled = isDaribarEnabled("order");
+    if (verifiedQuote.source === "daribar" && !daribarCommerceEnabled) {
+      return respond({ error: "daribar_orders_disabled" }, 503);
+    }
     if (delivery === "courier" && daribarCommerceEnabled) {
       if (!isDaribarDeliveryEnabled() || !verifiedQuote.delivery) return respond({ error: "delivery_quote_required" }, 409);
       if (verifiedQuote.delivery.destinationHash !== deliveryDestinationHash(city, address1)) {

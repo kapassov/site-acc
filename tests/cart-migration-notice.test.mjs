@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { boundedCartQuantity, validMedusaCartItem } from '../src/lib/cart/medusa-cart.ts';
+import { boundedCartQuantity, validCartItemForProvider, validMedusaCartItem } from '../src/lib/cart/medusa-cart.ts';
 import { cartExtraCopy } from '../src/lib/i18n/cart-extra.ts';
 
 const CURRENT='inkar-cart-v4-medusa',LEGACY='inkar-cart-v3-daribar',NOTICE='inkar-cart-migration-v4-medusa';
@@ -25,7 +25,7 @@ function harness(values=new Map()) {
     useCallback:callback=>callback,useMemo:factory=>factory()};
   const modules={react,'react/jsx-runtime':{jsx:(type,props)=>({type,props})},
     '@/lib/analytics/client':{trackEvent:()=>{}},'@/lib/client-uuid':{browserUuidV4:()=> `11111111-1111-4111-8111-${String(++uuidCounter).padStart(12,'0')}`},
-    './medusa-cart':{boundedCartQuantity,validMedusaCartItem}};
+    './medusa-cart':{boundedCartQuantity,validCartItemForProvider,validMedusaCartItem}};
   const loadedModule={exports:{}};
   new Function('require','module','exports','localStorage','window',compiled)(name=>{assert.ok(name in modules,name);return modules[name];},loadedModule,loadedModule.exports,storage,
     {addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)});

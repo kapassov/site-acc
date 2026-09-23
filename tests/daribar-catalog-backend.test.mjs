@@ -128,13 +128,13 @@ test("page collector fails closed on a stalled or truncated provider", async () 
   );
 });
 
-test("legacy Daribar snapshots remain isolated from the public Medusa catalog", async () => {
+test("Daribar snapshots are exposed only through the provider facade and preserve rollback", async () => {
   const route = await readFile(new URL("../src/app/api/catalog/route.ts", import.meta.url), "utf8");
   const catalog = await readFile(new URL("../src/lib/daribar/catalog.ts", import.meta.url), "utf8");
-  assert.match(route, /getMedusaCatalogPage/);
-  assert.match(route, /full_filtered_medusa_catalog/);
+  assert.match(route, /getStorefrontCatalogPage/);
+  assert.match(route, /full_filtered_\$\{source\}_catalog/);
   assert.match(route, /coverage: "full_catalog"/);
-  assert.doesNotMatch(route, /getDaribar|daribar\/catalog/);
+  assert.match(route, /storefrontCatalogSource/);
   assert.match(catalog, /daribar_snapshot_file_missing/);
   assert.match(catalog, /daribar_snapshot_expired/);
   assert.match(catalog, /\/api\/v1\/search\/category\/all/);

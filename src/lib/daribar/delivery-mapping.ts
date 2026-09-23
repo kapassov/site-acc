@@ -1,9 +1,10 @@
 import { ordersDatabasePool } from "../orders/store.ts";
 import type { StandardNLine } from "../standardn-commerce.ts";
-import type { CanonicalCheckoutItem } from "../checkoutItems.ts";
+import { detectCheckoutItemsSource, type CanonicalCheckoutItem } from "../checkoutItems.ts";
 import { medusaKnownPriceSql } from "../medusa-stock.ts";
 import { exactKzt } from "../money.ts";
 import { DaribarDeliveryError, type DaribarDeliveryItem } from "./delivery.ts";
+import { daribarSkuFromIds } from "./ids.ts";
 
 type ProductMappingRow = {
   ware_id: string;
@@ -18,11 +19,35 @@ export type DeliveryMappedPharmacy = { id: string; sourceCode: string; name: str
   lat?: number; lon?: number; hours?: string };
 export type DeliveryMappedItem = CanonicalCheckoutItem & { wareId: string; sku: string; unitPrice: number };
 
-/** Maps native Medusa cart identities to the one verified Daribar SKU/ware pair. */
+async function mapNativeDaribarItems(items: CanonicalCheckoutItem[]): Promise<DeliveryMappedItem[]> {
+  const decoded = items.map((item) => ({ ...item, sku: daribarSkuFromIds(item.productId, item.variantId) }));
+  if (decoded.some((item) => !item.sku)) throw new DaribarDeliveryError(400, "invalid_delivery_items");
+  const db = await ordersDatabasePool();
+  const result = await db.query<{ sku: string; price_amount: string | number | null }>(`
+    SELECT product.sku, product.price_amount
+    FROM daribar_catalog_state state
+    JOIN daribar_catalog_runs run ON run.id = state.active_run_id AND run.status = 'published'
+    JOIN daribar_catalog_products product ON product.run_id = run.id
+    WHERE state.singleton AND product.sku = ANY($1::text[])
+  `, [decoded.map((item) => item.sku)]);
+  const prices = new Map(result.rows.map((row) => [row.sku, exactKzt(row.price_amount)]));
+  return decoded.map((item) => {
+    const sku = item.sku!;
+    const unitPrice = prices.get(sku) || 0;
+    if (unitPrice <= 0) throw new DaribarDeliveryError(409, "cart_item_unavailable");
+    return { productId: item.productId, variantId: item.variantId, quantity: item.quantity,
+      sku, wareId: sku, unitPrice };
+  });
+}
+
+/** Resolves a complete basket. Native Daribar items never use a Medusa mapping. */
 export async function mapCheckoutItemsToDaribar(items: CanonicalCheckoutItem[]): Promise<DeliveryMappedItem[]> {
   if (!Array.isArray(items) || items.length < 1 || items.length > 30) {
     throw new DaribarDeliveryError(400, "invalid_delivery_items");
   }
+  const source = detectCheckoutItemsSource(items);
+  if (source === "daribar") return mapNativeDaribarItems(items);
+  if (source !== "medusa") throw new DaribarDeliveryError(400, "invalid_delivery_items");
   const db = await ordersDatabasePool();
   const result = await db.query<ProductMappingRow>(`
     WITH requested AS (
@@ -96,6 +121,13 @@ export async function mappedDaribarPharmacies(city?: string): Promise<Map<string
 }
 
 export async function mapQuoteLinesToDaribar(lines: StandardNLine[]): Promise<DaribarDeliveryItem[]> {
+  if (detectCheckoutItemsSource(lines) === "daribar") {
+    return lines.map((line) => {
+      const sku = daribarSkuFromIds(line.productId, line.variantId);
+      if (!sku) throw new DaribarDeliveryError(409, "delivery_product_mapping_missing");
+      return { sku, countDesired: line.quantity };
+    });
+  }
   const db = await ordersDatabasePool();
   const result = await db.query<ProductMappingRow>(`
     SELECT mapping.ware_id, mapping.product_id, mapping.variant_id, mapping.sku

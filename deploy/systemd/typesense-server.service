@@ -1,0 +1,28 @@
+[Unit]
+Description=Typesense search engine for the Daribar storefront catalogue
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=typesense
+Group=typesense
+EnvironmentFile=-/etc/inkar-shop/inkar-shop.env
+ExecStart=/usr/bin/typesense-server --data-dir=/var/lib/typesense --api-key=${TYPESENSE_ADMIN_API_KEY} --listen-address=127.0.0.1 --api-port=8108
+Restart=on-failure
+RestartSec=5s
+StateDirectory=typesense
+StateDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+
+[Install]
+WantedBy=multi-user.target

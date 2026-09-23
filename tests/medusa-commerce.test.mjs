@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { commerceBaseUrl, commerceSignature, medusaCommerce, validStandardNQuote } from '../src/lib/standardn-commerce.ts';
 import { createCheckoutQuote, createCourierAnchorQuote, verifyCheckoutQuote } from '../src/lib/checkoutQuote.ts';
 import { validMedusaCartItem, boundedCartQuantity } from '../src/lib/cart/medusa-cart.ts';
+import { daribarProductId, daribarVariantId } from '../src/lib/daribar/ids.ts';
 
 const items = [{ productId:'prod_A1',variantId:'variant_V1',quantity:2 }];
 const fixture = () => ({ quoteToken:'signed-upstream-quote-token',snapshotId:'a'.repeat(64),expiresAt:new Date(Date.now()+240000).toISOString(),currency:'KZT',subtotal:400,total:400,pharmacy:{id:'sloc_A1',name:'Аптека',city:'Алматы',address:'Адрес'},lines:[{...items[0],wareId:'12345678-1234-1234-1234-123456789abc',availableQuantity:3,unitPrice:200,total:400}],adjustments:[] });
@@ -44,13 +45,13 @@ test('quote validates every identity, available quantity, price, currency and ex
   const mutations=[q=>q.total=399,q=>q.currency='USD',q=>q.expiresAt=new Date(0).toISOString(),q=>q.lines[0].availableQuantity=1,q=>q.lines[0].unitPrice=0,q=>q.lines[0].productId='prod_B2',q=>q.lines[0].quantity=3,q=>q.lines[0].wareId='bad',q=>q.lines.push({...q.lines[0]}),q=>q.pharmacy.id='daribar-shop'];
   for(const mutate of mutations){const q=fixture();mutate(q);assert.equal(validStandardNQuote(q,items),false);}
 });
-test('signed checkout quote cannot be altered, replayed for another cart or supplied from Daribar',async()=>{
+test('signed checkout quote cannot be altered or replayed and binds its native provider',async()=>{
   const previous={fetch:globalThis.fetch,secret:process.env.CHECKOUT_QUOTE_SECRET,url:process.env.MEDUSA_COMMERCE_URL,bridge:process.env.MEDUSA_COMMERCE_SECRET};
   process.env.CHECKOUT_QUOTE_SECRET='q'.repeat(48);process.env.MEDUSA_COMMERCE_URL='http://127.0.0.1:19000';process.env.MEDUSA_COMMERCE_SECRET='s'.repeat(48);
   const dependencies={requestStockQuote:async()=>fixture(),requestStockQuotes:async()=>[{quote:fixture(),pharmacy:{id:'sloc_A1',sourceCode:'ass-1',name:'Аптека',city:'Алматы',address:'Адрес'}}]};
   try {
     const q=await createCheckoutQuote({items,fulfillment:'pickup',preferredPharmacy:{city:'Алматы'}},dependencies);
-    assert.equal(q.source,'medusa');assert.equal(verifyCheckoutQuote(q.id,items).version,3);
+    assert.equal(q.source,'medusa');assert.equal(verifyCheckoutQuote(q.id,items).version,4);
     assert.equal(verifyCheckoutQuote(q.id,[{...items[0],quantity:1}]),null);
     assert.equal(verifyCheckoutQuote(q.id+'.extra',items),null);
     const payload=JSON.parse(Buffer.from(q.id.split('.')[0],'base64url'));
@@ -58,7 +59,14 @@ test('signed checkout quote cannot be altered, replayed for another cart or supp
     assert.equal(verifyCheckoutQuote(Buffer.from(JSON.stringify(payload)).toString('base64url')+'.'+q.id.split('.')[1],items),null);
     payload.version=2;const encoded=Buffer.from(JSON.stringify(payload)).toString('base64url');
     assert.equal(verifyCheckoutQuote(encoded+'.'+createHmac('sha256',process.env.CHECKOUT_QUOTE_SECRET).update(encoded).digest('base64url'),items),null);
-    await assert.rejects(createCheckoutQuote({items:[{productId:'prod_Daribarabc12345',variantId:'variant_Daribarabc12345',quantity:1}],fulfillment:'pickup'}),{code:'stale_cart'});
+    const sku='SKU-NATIVE-1';
+    const nativeItems=[{productId:daribarProductId(sku),variantId:daribarVariantId(sku),quantity:1}];
+    const nativeQuote={...fixture(),subtotal:250,total:250,lines:[{...nativeItems[0],wareId:sku,availableQuantity:2,unitPrice:250,total:250}]};
+    const native=await createCheckoutQuote({items:nativeItems,fulfillment:'pickup'},
+      {requestStockQuote:async()=>nativeQuote,requestStockQuotes:async()=>[]});
+    assert.equal(native.source,'daribar');
+    assert.equal(verifyCheckoutQuote(native.id,nativeItems)?.source,'daribar');
+    assert.equal(verifyCheckoutQuote(native.id,items),null);
   } finally {
     globalThis.fetch=previous.fetch;
     for(const [key,value] of [['CHECKOUT_QUOTE_SECRET',previous.secret],['MEDUSA_COMMERCE_URL',previous.url],['MEDUSA_COMMERCE_SECRET',previous.bridge]]) {

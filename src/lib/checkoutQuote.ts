@@ -16,16 +16,15 @@ export type QuoteItem = CanonicalCheckoutItem;
 export type QuotePharmacy = StandardNQuote["pharmacy"];
 export type CheckoutQuoteLine = StandardNLine;
 export type CheckoutQuote = {
-  id: string; source: "medusa"; subtotal: number; total: number; currency: "KZT";
+  id: string; source: "medusa" | "daribar"; subtotal: number; total: number; currency: "KZT";
   expiresAt: string; pharmacy: QuotePharmacy; lines: CheckoutQuoteLine[];
   adjustments: CheckoutPricingAdjustment[];
   delivery?: CheckoutDeliveryQuote;
 };
-export type SignedMedusaQuote = StandardNQuote & {
-  version: 3; source: "medusa"; expires: number; itemsHash: string; fulfillment: CheckoutFulfillment;
+export type SignedQuote = StandardNQuote & {
+  version: 4; source: "medusa" | "daribar"; expires: number; itemsHash: string; fulfillment: CheckoutFulfillment;
   delivery?: CheckoutDeliveryQuote;
 };
-export type SignedQuote = SignedMedusaQuote;
 export class CheckoutQuoteError extends Error {
   status: number; code: string;
   constructor(status: number, code: string) { super(code); this.status = status; this.code = code; }
@@ -65,10 +64,11 @@ export async function createCheckoutQuote(input: {
 }, dependencies: CheckoutQuoteDependencies = DEFAULT_QUOTE_DEPENDENCIES): Promise<CheckoutQuote> {
   const items = canonicalizeCheckoutItems(input.items);
   if (!items || items.length > 30) throw new CheckoutQuoteError(400, "invalid_quote_items");
-  if (detectCheckoutItemsSource(items) !== "medusa") throw new CheckoutQuoteError(409, "stale_cart");
+  const source = detectCheckoutItemsSource(items);
+  if (source !== "medusa" && source !== "daribar") throw new CheckoutQuoteError(409, "stale_cart");
   try {
-    // Medusa owns catalogue identity, content and price. Daribar v3 is the
-    // request-time authority only for stock and the fulfilment pharmacy.
+    // The selected catalogue owns identity and price. Daribar v3 remains the
+    // request-time authority for stock and the fulfilment pharmacy.
     const preferredPharmacy = input.preferredPharmacy;
     const quoteCity = String(preferredPharmacy?.city || input.deliveryRequest?.city || "").trim();
     let quote = await dependencies.requestStockQuote({
@@ -140,12 +140,12 @@ export async function createCheckoutQuote(input: {
     }
     const expiresAt = new Date(Math.min(Date.parse(quote.expiresAt), Date.now() + 3 * 60_000)).toISOString();
     const signed: SignedQuote = {
-      ...quote, expiresAt, version: 3, source: "medusa", expires: Date.parse(expiresAt),
+      ...quote, expiresAt, version: 4, source, expires: Date.parse(expiresAt),
       itemsHash: itemsHash(items), fulfillment: input.fulfillment,
       ...(delivery ? { delivery } : {}),
     };
     const total = quote.total + (delivery?.price || 0);
-    return { id: encodeQuote(signed), source: "medusa", subtotal: quote.subtotal, total,
+    return { id: encodeQuote(signed), source, subtotal: quote.subtotal, total,
       currency: "KZT", expiresAt, pharmacy: quote.pharmacy,
       lines: quote.lines, adjustments: [
         ...quote.adjustments,
@@ -169,7 +169,8 @@ export async function createCourierAnchorQuote(input: {
 }, dependencies: CheckoutQuoteDependencies = DEFAULT_QUOTE_DEPENDENCIES): Promise<CheckoutQuote> {
   const items = canonicalizeCheckoutItems(input.items);
   if (!items || items.length > 30) throw new CheckoutQuoteError(400, "invalid_quote_items");
-  if (detectCheckoutItemsSource(items) !== "medusa") throw new CheckoutQuoteError(409, "stale_cart");
+  const source = detectCheckoutItemsSource(items);
+  if (source !== "medusa" && source !== "daribar") throw new CheckoutQuoteError(409, "stale_cart");
   const city = String(input.city || "").normalize("NFKC").trim().slice(0, 100);
   if (!city) throw new CheckoutQuoteError(400, "delivery_city_required");
   try {
@@ -206,7 +207,8 @@ function validDelivery(value: CheckoutDeliveryQuote | undefined): boolean {
 }
 export function verifyCheckoutQuote(token: unknown, items: QuoteItem[]): SignedQuote | null {
   const canonical = canonicalizeCheckoutItems(items);
-  if (!canonical || detectCheckoutItemsSource(canonical) !== "medusa"
+  const source = canonical ? detectCheckoutItemsSource(canonical) : null;
+  if (!canonical || (source !== "medusa" && source !== "daribar")
       || typeof token !== "string" || token.length < 32 || token.length > 65536) return null;
   const parts = token.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
@@ -216,7 +218,7 @@ export function verifyCheckoutQuote(token: unknown, items: QuoteItem[]): SignedQ
     const actual = Buffer.from(signature, "base64url");
     if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as SignedQuote;
-    if (payload.version !== 3 || payload.source !== "medusa" || payload.itemsHash !== itemsHash(canonical)
+    if (payload.version !== 4 || payload.source !== source || payload.itemsHash !== itemsHash(canonical)
         || payload.expires !== Date.parse(payload.expiresAt) || !["pharmacy", "pickup"].includes(payload.fulfillment)
         || !validStandardNQuote(payload, canonical) || !validDelivery(payload.delivery)
         || (payload.fulfillment === "pickup" && payload.delivery)

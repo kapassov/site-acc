@@ -26,7 +26,8 @@ test("Medusa cart never mixes or guesses old Daribar products", async () => {
 
   assert.match(source, /inkar-cart-v3-daribar/);
   assert.match(source, /STORAGE_KEY = "inkar-cart-v4-medusa"/);
-  assert.match(source, /validMedusaCartItem/);
+  assert.match(source, /validCartItemForProvider/);
+  assert.match(source, /provider/);
   assert.doesNotMatch(source, /localStorage\.removeItem\(LEGACY_STORAGE_KEY\)/);
   assert.doesNotMatch(source, /fetch\("\/api\/cart"/);
   assert.match(source, /legacyItemsRemoved/);

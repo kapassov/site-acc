@@ -7,7 +7,7 @@ import { CATALOG_NAVIGATION_TREE, catalogNavigationNode } from "../src/component
 
 const product = (id) => ({ id, slug: id, name: id });
 
-test("catalogue pages share Medusa pagination and its real category tree", async () => {
+test("catalogue pages share provider-neutral pagination and navigation", async () => {
   const [catalogPage, categoryPage, categoryTreeRoute, catalogView] = await Promise.all([
     readFile(new URL("../src/app/catalog/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/catalog/[slug]/page.tsx", import.meta.url), "utf8"),
@@ -16,15 +16,13 @@ test("catalogue pages share Medusa pagination and its real category tree", async
   ]);
 
   for (const source of [catalogPage, categoryPage]) {
-    assert.match(source, /getMedusaCatalogPage/);
-    assert.match(source, /getMedusaNavigation/);
-    assert.doesNotMatch(source, /getDaribar|daribar\/catalog/);
+    assert.match(source, /getStorefrontCatalogPage/);
+    assert.match(source, /getStorefrontNavigation/);
     assert.match(source, /initialPageVerified=\{catalogPage !== null\}/);
     assert.match(source, /initialFacets=\{catalogPage\?\.facets \?\? null\}/);
   }
   assert.match(categoryTreeRoute, /getCatTree/);
-  assert.match(categoryTreeRoute, /"x-catalog-source": "medusa"/);
-  assert.doesNotMatch(categoryTreeRoute, /daribar/);
+  assert.match(categoryTreeRoute, /storefrontCatalogSource/);
   assert.match(catalogView, /initialFacets\?: CatalogFacets \| null/);
   assert.match(catalogView, /useState<CatalogFacets \| null>\(initialFacets\)/);
 });

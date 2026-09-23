@@ -113,10 +113,14 @@ test("Medusa name search canonicalizes mixed scripts and attached numeric labels
   assert.deepEqual(matchMedusaTitles(edgeTitles, edgeTitles[1].title, true).ids, ["prod_attached"]);
   assert.deepEqual(matchMedusaTitles(edgeTitles, "Кастыли Life Cor FS923 L").ids, ["prod_crutches"]);
 });
-test("All catalog identity, content and price entry points use Medusa, never Daribar or a remote storefront fallback", async () => {
-  for (const path of ["src/lib/api.ts", "src/lib/medusa-catalog.ts", "src/lib/catalog-read.ts", "src/app/api/catalog/route.ts", "src/app/api/search/route.ts", "src/app/api/product/[slug]/route.ts", "src/app/api/prices/route.ts", "src/app/api/pharmacies/route.ts", "src/app/catalog/page.tsx", "src/app/catalog/[slug]/page.tsx"]) {
+test("catalog entry points use the feature-flagged facade while Medusa internals stay isolated", async () => {
+  for (const path of ["src/lib/medusa-catalog.ts", "src/lib/catalog-read.ts", "src/app/api/prices/route.ts", "src/app/api/pharmacies/route.ts"]) {
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     assert.doesNotMatch(source, /from ["'][^"']*(?:daribar\/|remote-catalog)/, path);
+  }
+  for (const path of ["src/app/api/catalog/route.ts", "src/app/api/search/route.ts", "src/app/catalog/page.tsx", "src/app/catalog/[slug]/page.tsx"]) {
+    const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+    assert.match(source, /storefront-catalog/, path);
   }
 });
 

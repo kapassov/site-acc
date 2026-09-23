@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { kztMinorUnits } from "./money.ts";
-import type { CanonicalCheckoutItem } from "./checkoutItems";
+import { checkoutItemSource, type CanonicalCheckoutItem } from "./checkoutItems.ts";
 import type { CheckoutFulfillment } from "./checkoutPricing";
 
 export type StandardNLine = CanonicalCheckoutItem & {
@@ -85,8 +85,12 @@ export function validStandardNQuote(value: unknown, items: CanonicalCheckoutItem
   let total = 0;
   for (const line of q.lines) {
     const item = expected.get(line?.variantId);
+    const source = item ? checkoutItemSource(item) : null;
+    const validWareId = Boolean(item && line) && (source === "daribar"
+      ? /^[A-Za-z0-9._:-]{1,96}$/.test(line.wareId)
+      : /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(line.wareId));
     if (!item || line.productId !== item.productId || line.quantity !== item.quantity
-        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(line.wareId)
+        || !validWareId
         || !Number.isFinite(line.availableQuantity) || line.availableQuantity < line.quantity
         || kztMinorUnits(line.unitPrice) === null || line.unitPrice <= 0
         || kztMinorUnits(line.total) === null || kztMinorUnits(line.total) !== kztMinorUnits(line.unitPrice)! * line.quantity) return false;

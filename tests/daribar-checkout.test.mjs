@@ -47,12 +47,12 @@ test("Daribar order creation uses user auth and maps storefront delivery/payment
   assert.match(source, /daribarOrderItemsFromOffer/);
 });
 
-test("active quote keeps Medusa product identities but binds live Daribar stock", async () => {
+test("active quote accepts one native source and binds the complete basket to live Daribar stock", async () => {
   const source = await readFile(QUOTE, "utf8");
 
-  assert.match(source, /detectCheckoutItemsSource\(items\) !== "medusa"/);
+  assert.match(source, /source !== "medusa" && source !== "daribar"/);
   assert.match(source, /stale_cart/);
-  assert.match(source, /version: 3/);
+  assert.match(source, /version: 4/);
   assert.match(source, /requestDaribarStockQuote/);
   assert.match(source, /requestDaribarStockQuotes/);
   assert.match(source, /validStandardNQuote\(payload, canonical\)/);

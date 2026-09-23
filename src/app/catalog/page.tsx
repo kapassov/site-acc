@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { parseCatalogQuery } from "@/lib/catalog-query";
 import { CatalogView } from "@/components/catalog/CatalogView";
-import { getMedusaCatalogPage, getMedusaNavigation } from "@/lib/medusa-catalog";
+import { getStorefrontCatalogPage, getStorefrontNavigation } from "@/lib/storefront-catalog";
 
 export const metadata: Metadata = {
   title: "Каталог",
@@ -24,8 +24,8 @@ export default async function CatalogPage({
   if (q) params.set("q", q);
   const initialQuery = parseCatalogQuery(params);
   const [catalogPage, tree] = await Promise.all([
-    getMedusaCatalogPage(initialQuery).catch(() => null),
-    getMedusaNavigation().catch(() => []),
+    getStorefrontCatalogPage(initialQuery).catch(() => null),
+    getStorefrontNavigation().catch(() => []),
   ]);
 
   return (
