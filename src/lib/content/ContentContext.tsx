@@ -104,6 +104,9 @@ function safePaymentSessionId(value: unknown): string | null {
  * open while the hosted payment runs in a separate browser tab.
  */
 function redirectToHostedPayment(paymentSessionId: string): never {
+  // A hard navigation intentionally transfers control from checkout state to
+  // the isolated same-origin payment guard.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign(`/payment/${encodeURIComponent(paymentSessionId)}`);
   throw new Error("payment_redirect");
 }

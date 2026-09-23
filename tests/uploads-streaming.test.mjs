@@ -14,7 +14,7 @@ test("upload HEAD has a metadata-only path with an authoritative size ceiling", 
 
 test("upload GET streams instead of buffering the complete file", async () => {
   const source = await readFile(ROUTE, "utf8");
-  assert.match(source, /createReadStream\(metadata\.filePath\)/);
+  assert.match(source, /createReadStream\(\/\*turbopackIgnore: true\*\/ metadata\.filePath\)/);
   assert.match(source, /Readable\.toWeb\(nodeStream\)/);
   assert.doesNotMatch(source, /new Uint8Array\(body\)|arrayBuffer\(\)/);
 });

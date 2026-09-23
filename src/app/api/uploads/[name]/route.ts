@@ -78,7 +78,7 @@ export async function GET(
   const metadata = await uploadMetadata(params);
   if (metadata instanceof NextResponse) return metadata;
 
-  const nodeStream = createReadStream(metadata.filePath);
+  const nodeStream = createReadStream(/*turbopackIgnore: true*/ metadata.filePath);
   const body = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
   return new NextResponse(body, {
     status: 200,
