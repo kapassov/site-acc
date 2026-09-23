@@ -20,7 +20,7 @@ __pycache__/
 # Runtime state, exports and uploads
 .runtime-cache/
 .dependencies-installed
-data/
+/data/
 public/uploads/
 *.csv
 *.xlsx
