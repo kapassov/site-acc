@@ -76,6 +76,12 @@ function orderableOffer(offer: DaribarDeliveryOffer): DaribarDeliveryOffer | nul
   const bestDelivery = options[0];
   return { ...offer, options, bestDelivery, total: offer.itemsPrice + bestDelivery.price };
 }
+export function compareDeliveryOffersByDistance(left: DaribarDeliveryOffer, right: DaribarDeliveryOffer): number {
+  return left.bestDelivery.distance - right.bestDelivery.distance
+    || left.bestDelivery.price - right.bestDelivery.price
+    || left.bestDelivery.eta - right.bestDelivery.eta
+    || left.pharmacy.code.localeCompare(right.pharmacy.code);
+}
 function parsePharmacy(value: unknown): DaribarDeliveryPharmacy | null {
   const raw = record(value);
   if (!raw) return null;
@@ -184,11 +190,10 @@ export async function bestDeliveryInCity(input: { city: string; items: DaribarDe
   const normalizedCity = city.normalize("NFKC").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
   const valid = (offers as DaribarDeliveryOffer[]).map(orderableOffer).filter((offer): offer is DaribarDeliveryOffer => Boolean(offer))
     .filter(offer => offer.pharmacy.city.normalize("NFKC").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ") === normalizedCity);
-  // Product prices are owned by Medusa and are identical for every fulfilment
-  // candidate. Rank the city-wide alternatives only by courier price and ETA.
-  valid.sort((left, right) => left.bestDelivery.price - right.bestDelivery.price
-    || left.bestDelivery.eta - right.bestDelivery.eta
-    || left.pharmacy.code.localeCompare(right.pharmacy.code));
+  // Catalogue prices are independent of the fulfilment point. Once the
+  // customer enters an address, choose the nearest pharmacy that can fulfil
+  // the complete basket; price and ETA are deterministic tie-breakers.
+  valid.sort(compareDeliveryOffersByDistance);
   if (!valid[0]) throw new DaribarDeliveryError(409, "no_delivery_available");
   return { best: valid[0], alternatives: valid.slice(1) };
 }

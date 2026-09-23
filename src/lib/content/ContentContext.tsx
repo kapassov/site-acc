@@ -100,8 +100,8 @@ function safePaymentSessionId(value: unknown): string | null {
 
 /**
  * Keep the hosted URL server-side and move to our same-origin payment guard.
- * Kassa does not currently return customers to our domain, so the guard stays
- * open while the hosted payment runs in a separate browser tab.
+ * The guard performs an authenticated same-origin POST and then transfers the
+ * current tab to the hosted provider with a server-side 303 redirect.
  */
 function redirectToHostedPayment(paymentSessionId: string): never {
   // A hard navigation intentionally transfers control from checkout state to

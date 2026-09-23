@@ -52,6 +52,10 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
   const lazyMin = usePrice(product.id, Boolean(product.priceTBD && priceInView && !confirmedOut));
   const buyPrice: number | null = product.priceTBD ? (typeof lazyMin === "number" ? lazyMin : null) : product.price;
   const available = !confirmedOut && (product.priceTBD ? typeof lazyMin === "number" : product.inStock);
+  // A stale catalogue stock bit is never authoritative. Priced products can
+  // enter the draft cart; the complete basket is checked live with Daribar at
+  // checkout. Only a fresh, explicitly confirmed zero blocks the action.
+  const canAddToCart = Boolean(product.variantId && !product.prescription && buyPrice && !confirmedOut);
 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -137,7 +141,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
         </div>
         {historicalPrice && priceDate && <p className="mt-0.5 text-[10px] font-medium text-slate-400">{t("card.priceAsOf", { date: priceDate })}</p>}
 
-        {available && product.variantId && !product.prescription ? (
+        {canAddToCart ? (
           <button
             type="button"
             onClick={handleAdd}
@@ -155,10 +159,6 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
         ) : available && !product.prescription ? (
           <Link href={href} className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand-200 bg-brand-50 text-[13px] font-semibold sm:mt-3 sm:rounded-xl sm:text-sm text-brand-800 transition hover:bg-brand-100">
             {t("card.details")} <ArrowRight className="h-4 w-4" />
-          </Link>
-        ) : historicalPrice ? (
-          <Link href={href} className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand-200 bg-brand-50 text-[13px] font-semibold text-brand-800 transition hover:bg-brand-100 sm:mt-3 sm:rounded-xl sm:text-sm">
-            {t("card.checkAvailability")} <ArrowRight className="h-4 w-4" />
           </Link>
         ) : (
           <div className={cn(

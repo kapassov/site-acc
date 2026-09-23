@@ -167,7 +167,7 @@ test("checkout requests location only on pickup button click and cancels manual 
   assert.match(page, /onClick=\{\(\) => \{ cancelNearestPickup\(\); setMapOpen\(true\); \}\}/);
   assert.match(page, /onPick=\{\(point\) => \{ cancelNearestPickup\(\); setPharmacy\(point\)/);
   assert.match(page, /if \(submitting \|\| locatingPharmacy \|\| nearestRequest.current\) return/);
-  assert.equal((page.match(/disabled=\{checkoutBlocked \|\| submitting \|\| quoteLoading \|\| courierAnchorLoading \|\| locatingPharmacy\}/g) || []).length, 2);
+  assert.equal((page.match(/disabled=\{checkoutBlocked \|\| submitting \|\| quoteLoading \|\| locatingPharmacy\}/g) || []).length, 2);
 });
 
 test("nearest choice atomically updates city, source identity and invalidates the previous quote", async () => {

@@ -187,7 +187,8 @@ test("checkout safely replays a stored attempt key instead of creating a second 
   assert.match(content, /safePaymentSessionId\(data\?\.paymentSessionId\)/);
   assert.match(content, /window\.location\.assign\(`\/payment\/\$\{encodeURIComponent\(paymentSessionId\)\}`\)/);
   assert.match(paymentPage, /const continueAction = `\/api\/payment\/session\/\$\{encodeURIComponent\(sessionId\)\}\/continue`/);
-  assert.match(paymentPage, /<form method="post" action=\{continueAction\} target="_blank"/);
+  assert.match(paymentPage, /<form method="post" action=\{continueAction\}/);
+  assert.doesNotMatch(paymentPage, /target="_blank"/);
   assert.doesNotMatch(paymentPage, /session\.redirect|paymentUrl|kassa\.com/i);
   assert.doesNotMatch(content, /data\?\.redirect/);
 });

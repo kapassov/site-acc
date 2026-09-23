@@ -302,7 +302,7 @@ export function PaymentPageClient({ sessionId }: { sessionId: string }) {
                   </div>
                 </div>
 
-                <form method="post" action={continueAction} target="_blank" onSubmit={beginRedirect} className="mt-6 hidden lg:block" aria-busy={redirecting}>
+                <form method="post" action={continueAction} onSubmit={beginRedirect} className="mt-6 hidden lg:block" aria-busy={redirecting}>
                   <PaymentButton copy={copy} redirecting={redirecting} />
                 </form>
                 <Link href="/account/orders" className="mt-4 hidden w-fit text-sm font-semibold text-slate-600 underline decoration-slate-300 underline-offset-4 transition hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 lg:inline-flex">
@@ -362,7 +362,7 @@ export function PaymentPageClient({ sessionId }: { sessionId: string }) {
               <p className="text-[11px] font-medium text-slate-500">{copy.amount}</p>
               <p className="truncate font-display text-lg font-extrabold tracking-tight text-slate-950">{amount}</p>
             </div>
-            <form method="post" action={continueAction} target="_blank" onSubmit={beginRedirect} className="min-w-0 flex-1" aria-busy={redirecting}>
+            <form method="post" action={continueAction} onSubmit={beginRedirect} className="min-w-0 flex-1" aria-busy={redirecting}>
               <PaymentButton copy={copy} redirecting={redirecting} compact />
             </form>
           </div>

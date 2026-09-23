@@ -38,7 +38,7 @@ test("payment page resolves Next 16 async params and is not indexable", async ()
   assert.match(source, /params: Promise<\{ sessionId: string \}>/);
   assert.match(source, /const \{ sessionId \} = await params/);
   assert.match(source, /robots: \{ index: false, follow: false \}/);
-  assert.match(source, /referrer: "no-referrer"/);
+  assert.match(source, /referrer: "same-origin"/);
 });
 
 test("payment UI uses an opaque session and a server-side continue POST", async () => {
@@ -47,6 +47,7 @@ test("payment UI uses an opaque session and a server-side continue POST", async 
   assert.match(source, /cache: "no-store"/);
   assert.match(source, /credentials: "same-origin"/);
   assert.match(source, /<form method="post" action=\{continueAction\}/);
+  assert.doesNotMatch(source, /target="_blank"/);
   assert.match(source, /\/api\/payment\/session\/\$\{encodeURIComponent\(sessionId\)\}\/continue/);
   assert.match(source, /onSubmit=\{beginRedirect\}/);
   assert.doesNotMatch(source, /window\.location|location\.assign|paymentUrl|redirect\s*:/);

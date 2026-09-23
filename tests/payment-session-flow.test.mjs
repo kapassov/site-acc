@@ -108,7 +108,8 @@ test("payment session routes authenticate ownership and reveal URL only through 
   assert.doesNotMatch(recoveryRoute, /createDaribar|medusaCommerce|fetch\(/);
   assert.match(paymentPage, /fetch\(`\/api\/payment\/session\/\$\{encodeURIComponent\(sessionId\)\}`/);
   assert.match(paymentPage, /const continueAction = `\/api\/payment\/session\/\$\{encodeURIComponent\(sessionId\)\}\/continue`/);
-  assert.match(paymentPage, /<form method="post" action=\{continueAction\} target="_blank"/);
+  assert.match(paymentPage, /<form method="post" action=\{continueAction\}/);
+  assert.doesNotMatch(paymentPage, /target="_blank"/);
   assert.doesNotMatch(paymentPage, /session\.redirect|paymentUrl|kassa\.com/i);
 });
 
@@ -165,7 +166,8 @@ test("checkout returns an opaque internal session and never its private replay U
   assert.match(content, /safePaymentSessionId\(data\?\.paymentSessionId\)/);
   assert.match(content, /window\.location\.assign\(`\/payment\/\$\{encodeURIComponent\(paymentSessionId\)\}`\)/);
   assert.match(paymentPage, /const continueAction = `\/api\/payment\/session\/\$\{encodeURIComponent\(sessionId\)\}\/continue`/);
-  assert.match(paymentPage, /<form method="post" action=\{continueAction\} target="_blank"/);
+  assert.match(paymentPage, /<form method="post" action=\{continueAction\}/);
+  assert.doesNotMatch(paymentPage, /target="_blank"/);
   assert.doesNotMatch(paymentPage, /session\.redirect|paymentUrl|kassa\.com/i);
   assert.match(content, /paymentSessionId,/);
   assert.match(content, /safePaymentSessionId\(previous\.paymentSessionId\)/);

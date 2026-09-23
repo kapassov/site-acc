@@ -1,41 +1,38 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { compareDeliveryChoices } from "../src/lib/checkout/delivery-choice.ts";
+import { compareDeliveryOffersByDistance } from "../src/lib/daribar/delivery.ts";
 
-test("city comparison exposes savings without changing the active quote", () => {
-  const current = { subtotal: 4100, total: 5300, pharmacy: { id: "sloc_current" }, delivery: { price: 1200, eta: 40, provider: "yandex" } };
-  const candidate = { subtotal: 4250, total: 4950, pharmacy: { id: "sloc_city" }, delivery: { price: 700, eta: 45, provider: "wolt" } };
-  assert.deepEqual(compareDeliveryChoices(current, candidate), {
-    savings: 350,
-    isCheaper: true,
-    changesPharmacy: true,
-  });
+function offer(code, distance, price, eta) {
+  return {
+    pharmacy: { code },
+    bestDelivery: { distance, price, eta },
+  };
+}
+
+test("city delivery ranks the nearest fulfilment pharmacy before price", () => {
+  const values = [
+    offer("cheap-far", 9_000, 500, 25),
+    offer("near-expensive", 1_200, 1_500, 20),
+    offer("nearest", 800, 2_000, 35),
+  ].sort(compareDeliveryOffersByDistance);
+  assert.deepEqual(values.map((value) => value.pharmacy.code), ["nearest", "near-expensive", "cheap-far"]);
 });
 
-test("a more expensive city result is never presented as savings", () => {
-  const current = { subtotal: 4100, total: 5000, pharmacy: { id: "sloc_current" } };
-  const candidate = { subtotal: 4000, total: 5100, pharmacy: { id: "sloc_other" } };
-  assert.deepEqual(compareDeliveryChoices(current, candidate), {
-    savings: 0,
-    isCheaper: false,
-    changesPharmacy: true,
-  });
+test("equal-distance pharmacies use price, ETA and stable code as tie-breakers", () => {
+  const values = [
+    offer("z", 1_000, 900, 30),
+    offer("b", 1_000, 800, 30),
+    offer("a", 1_000, 800, 30),
+    offer("slow", 1_000, 800, 40),
+  ].sort(compareDeliveryOffersByDistance);
+  assert.deepEqual(values.map((value) => value.pharmacy.code), ["a", "b", "slow", "z"]);
 });
 
-test("courier checkout anchors pharmacy pricing and runs city optimization only on demand", async () => {
-  const [page, anchorRoute, quote] = await Promise.all([
-    readFile(new URL("../src/app/checkout/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/app/api/checkout/courier-anchor/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/lib/checkoutQuote.ts", import.meta.url), "utf8"),
-  ]);
-  assert.match(anchorRoute, /createCourierAnchorQuote/);
-  const anchor = quote.slice(quote.indexOf("export async function createCourierAnchorQuote"));
-  assert.match(anchor, /fulfillment:\s*"pickup"/);
-  assert.match(anchor, /preferredPharmacy:\s*\{\s*city\s*\}/);
-  assert.doesNotMatch(anchor, /rankMappedPharmaciesForItems|mapLocalPharmacyToDaribar/);
-  assert.match(page, /deliveryRequest:\s*\{[\s\S]*?mode:\s*"pharmacy"/);
+test("courier checkout automatically requests the nearest city option after address entry", async () => {
+  const page = await readFile(new URL("../src/app/checkout/page.tsx", import.meta.url), "utf8");
   assert.match(page, /deliveryRequest:\s*\{[\s\S]*?mode:\s*"city"/);
-  assert.match(page, /findBetterCityDelivery/);
-  assert.match(page, /applyCityDelivery/);
+  assert.doesNotMatch(page, /\/api\/checkout\/courier-anchor|findBetterCityDelivery|applyCityDelivery/);
+  assert.doesNotMatch(page, /Найти выгоднее|Find a better option/);
+  assert.match(page, /<CourierPriceChoice[\s\S]*?quote=\{quote\}/);
 });
