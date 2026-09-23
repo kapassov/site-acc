@@ -141,6 +141,8 @@ test('cash checkout still fails closed when courier booking fails',async()=>{
   assert.equal(f.calls.find(c=>c[0]==='complete')[2].state,'replay');
 });
 for(const [name,options,extra,status] of [
+  ['missing cash selection',{}, {payment:undefined},400],
+  ['missing delivery selection',{}, {delivery:undefined},400],
   ['missing authentication',{noAuth:true},{},401],['expired quote',{invalidQuote:true},{},409],
   ['cross-city quote',{}, {city:'Астана'},409],['wrong fulfillment',{}, {delivery:'pickup'},409],
   ['old Daribar cart',{}, {cartItems:[{productId:'prod_DaribarABC12345',variantId:'variant_DaribarABC12345',quantity:1}]},409],

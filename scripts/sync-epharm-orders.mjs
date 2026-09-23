@@ -2,7 +2,7 @@
 import pg from "pg";
 import { pathToFileURL } from "node:url";
 import {
-  buildOrder, exactEpharmPharmacyId, parsePharmacyAllowlist, signature, stableJson,
+  buildOrder, exactEpharmPharmacyId, isPickupCashOrder, parsePharmacyAllowlist, signature, stableJson,
   STATUS_LABELS, validateFeed, validateOrderAck, validateOrigin,
 } from "./lib/epharm-contract.mjs";
 
@@ -43,6 +43,7 @@ export async function runOnce(env = process.env) {
   let locked = false;
   let sent = 0;
   let failed = 0;
+  let skipped = 0;
   let updated = 0;
   const request = async (method, target, input) => {
     const body = input === undefined ? "" : stableJson(input);
@@ -66,6 +67,31 @@ export async function runOnce(env = process.env) {
   try {
     locked = (await db.query("SELECT pg_try_advisory_lock($1) AS locked", [LOCK])).rows[0].locked;
     if (!locked) return { busy: true };
+    // Existing outbox events may predate this policy. Retire them explicitly
+    // instead of leaving a perpetual pending/failed backlog.
+    const suppressed = await db.query(`
+      UPDATE integration_outbox o
+      SET status='skipped', locked_at=NULL, last_error='pickup_cash_only', updated_at=now()
+      FROM site_orders s
+      WHERE s.id = o.aggregate_id
+        AND o.topic = 'epharm.order.created'
+        AND o.created_at >= $1 AND s.placed_at >= $1
+        AND (o.status IN ('pending','failed')
+          OR (o.status = 'processing' AND o.locked_at < now() - interval '5 minutes'))
+        AND (s.delivery_method IS DISTINCT FROM 'pickup'
+          OR s.metadata->>'payment' IS DISTINCT FROM 'cash'
+          OR s.is_demo IS DISTINCT FROM false
+          OR o.payload->>'delivery_method' IS DISTINCT FROM 'pickup'
+          OR o.payload->>'payment_method' IS DISTINCT FROM 'cash'
+          OR o.payload->>'is_demo' IS DISTINCT FROM 'false'
+          OR o.payload->>'payment_status' = 'demo_no_charge'
+          OR (o.epharm_request IS NOT NULL AND (
+            o.epharm_request->>'delivery' IS DISTINCT FROM 'pickup'
+            OR o.epharm_request->>'paymentMethod' IS DISTINCT FROM 'cash'
+            OR o.epharm_request->>'demo' IS DISTINCT FROM 'false'
+            OR o.epharm_request->>'paymentStatus' = 'demo_no_charge')))
+    `, [start]);
+    skipped = suppressed.rowCount;
     const backlog = await db.query(`
       SELECT o.*
       FROM integration_outbox o
@@ -74,6 +100,12 @@ export async function runOnce(env = process.env) {
         AND o.created_at >= $1
         AND s.placed_at >= $1
         AND s.status IN ('Новый','Собирается','Готов к выдаче')
+        AND s.delivery_method = 'pickup' AND s.metadata->>'payment' = 'cash'
+        AND s.is_demo = false
+        AND o.payload->>'delivery_method' = 'pickup'
+        AND o.payload->>'payment_method' = 'cash'
+        AND o.payload->>'is_demo' = 'false'
+        AND o.payload->>'payment_status' IS DISTINCT FROM 'demo_no_charge'
         AND ($2::boolean OR o.payload->>'pharmacy_external_id' = ANY($3::text[]))
         AND (
           (o.status IN ('pending','failed') AND o.available_at <= now())
@@ -84,6 +116,7 @@ export async function runOnce(env = process.env) {
     `, [start, allowlist.all, allowlist.ids]);
     for (const event of backlog.rows) {
       try {
+        if (!isPickupCashOrder(event.payload)) throw new Error("unsupported_fulfillment_or_payment");
         await db.query(`
           UPDATE integration_outbox
           SET status='processing', locked_at=now(), attempts=attempts+1, updated_at=now()
@@ -110,6 +143,10 @@ export async function runOnce(env = process.env) {
             "UPDATE integration_outbox SET epharm_request=$2::jsonb WHERE id=$1",
             [event.id, JSON.stringify(input)],
           );
+        }
+        if (input.delivery !== "pickup" || input.paymentMethod !== "cash"
+            || input.demo !== false || input.paymentStatus === "demo_no_charge") {
+          throw new Error("unsupported_fulfillment_or_payment");
         }
         validateOrderAck(await request("POST", OUTBOUND_PATH, input), input.orderId);
         await db.query(`
@@ -159,7 +196,7 @@ export async function runOnce(env = process.env) {
       hasMore = feed.hasMore;
       pages += 1;
     }
-    return { enabled: true, sent, failed, updated, cursor };
+    return { enabled: true, sent, failed, skipped, updated, cursor };
   } finally {
     if (locked) await db.query("SELECT pg_advisory_unlock($1)", [LOCK]).catch(() => undefined);
     await db.end();

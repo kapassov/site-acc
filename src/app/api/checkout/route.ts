@@ -78,7 +78,9 @@ export async function POST(req: Request) {
   if (detectCheckoutItemsSource(items) !== "medusa") {
     return NextResponse.json({ error: "stale_cart" }, { status: 409, headers: NO_STORE });
   }
-  const delivery = String(body.delivery || "courier"), payment = String(body.payment || "cash");
+  // Never infer a cash payment or a delivery choice from an omitted field.
+  const delivery = typeof body.delivery === "string" ? body.delivery : "";
+  const payment = typeof body.payment === "string" ? body.payment : "";
   const city = String(body.city || "").trim().slice(0, 100);
   const address1 = String(body.address || "").trim().slice(0, 300);
   const name = String(body.name || "Покупатель").trim().slice(0, 100) || "Покупатель";
