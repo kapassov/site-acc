@@ -65,23 +65,26 @@ export function validateOrderAck(ack, orderId) {
   return ack;
 }
 
+// The cashier queue is deliberately narrower than the ACC checkout: delivery
+// and online payment remain valid commercial orders, but are not till orders.
+export function isPickupCashOrder(payload) {
+  return payload?.delivery_method === "pickup"
+    && payload.payment_method === "cash"
+    && payload.is_demo === false
+    && payload.payment_status !== "demo_no_charge";
+}
+
 export function buildOrder(event, catalog, pharmacyExternalId) {
   const payload = event.payload;
   if (!payload || payload.status_code !== "submitted" || !/^\d{6}$/.test(payload.pickup_code || "")) {
     throw new Error("invalid_order_snapshot");
   }
-  const rawDelivery = payload.delivery_method;
-  const delivery = ["pickup", "Самовывоз"].includes(rawDelivery)
-    ? "pickup"
-    : ["courier", "Доставка", "Курьер", "pharmacy"].includes(rawDelivery) ? "pharmacy" : null;
-  if (!delivery || !["cash", "card", "kaspi", "halyk"].includes(payload.payment_method)) {
-    throw new Error("unsupported_fulfillment_or_payment");
-  }
+  if (!isPickupCashOrder(payload)) throw new Error("unsupported_fulfillment_or_payment");
   // Cash on pickup is recorded by ACC as not_required until the pharmacist
   // confirms collection. Epharm expects pending and enforces cashCollected.
-  const paymentStatus = payload.payment_method === "cash" && payload.payment_status === "not_required"
+  const paymentStatus = payload.payment_status === "not_required"
     ? "pending" : payload.payment_status;
-  if (!["pending", "paid", "demo_no_charge"].includes(paymentStatus)) {
+  if (!["pending", "paid"].includes(paymentStatus)) {
     throw new Error("unsupported_payment_status");
   }
   const lines = (payload.line_items || []).map((line) => {
@@ -120,7 +123,7 @@ export function buildOrder(event, catalog, pharmacyExternalId) {
     createdAt: createdAt.toISOString(),
     total,
     currency: String(payload.currency_code).toUpperCase(),
-    delivery,
+    delivery: "pickup",
     paymentMethod: payload.payment_method,
     paymentStatus,
     demo: payload.is_demo === true,

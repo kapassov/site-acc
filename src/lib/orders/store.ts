@@ -343,9 +343,13 @@ async function postgresCreateOrder(input: CreateOrderInput): Promise<StoredOrder
       if (!sameIdempotencyKey && !sameSourceOrder) throw new Error("order_idempotency_conflict");
     }
 
-    // Daribar owns payment/delivery, while ePharm owns pharmacy assembly and till notifications.
-    // The outbox is idempotent, so the same commercial order is published once to each system.
-    await insertOutbox(client, "epharm.order.created", row, orderCreatedOutboxKey(row.id), epharmPayload(row));
+    // ACC retains every commercial order; only explicitly selected, non-demo
+    // pickup with cash collection is a pharmacist till order.
+    const payload = epharmPayload(row);
+    if (payload.delivery_method === "pickup" && payload.payment_method === "cash"
+        && payload.is_demo === false && payload.payment_status !== "demo_no_charge") {
+      await insertOutbox(client, "epharm.order.created", row, orderCreatedOutboxKey(row.id), payload);
+    }
     await client.query("COMMIT");
     return rowToOrder(row);
   } catch (error) {
