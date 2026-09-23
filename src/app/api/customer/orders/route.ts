@@ -6,6 +6,7 @@ import { medusaStore } from "@/lib/medusaStore";
 import { listCustomerOrders, updateStoredOrderMetadata } from "@/lib/orders/store";
 import { setDaribarAuthCookies } from "@/lib/daribar/auth";
 import { DaribarCustomerSessionError, daribarCustomerSession } from "@/lib/daribar/customer-session";
+import { getDaribarCustomerOrderPayment, type DaribarOrderPaymentSnapshot } from "@/lib/daribar/order-payments";
 import { getDaribarCustomerOrder, getDaribarCustomerOrderFeed, type DaribarOrderSnapshot } from "@/lib/daribar/order-status";
 import { customerOrderSummary, providerMetadataPatch, providerSnapshotFor } from "@/lib/orders/customer-view";
 
@@ -68,12 +69,38 @@ export async function GET(req: Request) {
         providerFeed = new Map(recovered.flatMap((result) => result.status === "fulfilled"
           ? [[result.value[0], result.value[1]] as const] : []));
       }
+      // The documented payment endpoint is per order. Refresh only a bounded
+      // number of recent unresolved card orders so the account page stays fast
+      // and cannot fan out into an unbounded load on Daribar.
+      const paymentCandidates = visibleOrders.filter((order) => (
+        order.sourceSystem === "daribar"
+          && String(order.metadata?.payment || "").toLowerCase() === "card"
+          && String(order.metadata?.payment_status || "").toLowerCase() !== "paid"
+      )).slice(0, 5);
+      const paymentResults = await Promise.allSettled(paymentCandidates.map(async (order) => (
+        [order.sourceOrderId, await getDaribarCustomerOrderPayment(
+          daribarSession.accessToken,
+          order.sourceOrderId,
+        )] as const
+      )));
+      const paymentFeed = new Map<string, DaribarOrderPaymentSnapshot>(paymentResults.flatMap((result) => (
+        result.status === "fulfilled" && result.value[1]
+          ? [[result.value[0], result.value[1]] as const]
+          : []
+      )));
       await Promise.allSettled(visibleOrders.map((order) => {
         const snapshot = providerSnapshotFor(order, providerFeed);
-        return snapshot ? updateStoredOrderMetadata(order.id, providerMetadataPatch(snapshot)) : Promise.resolve(null);
+        const payment = paymentFeed.get(order.sourceOrderId);
+        return snapshot || payment
+          ? updateStoredOrderMetadata(order.id, providerMetadataPatch(snapshot, payment))
+          : Promise.resolve(null);
       }));
       const response = NextResponse.json(
-        { orders: visibleOrders.map((order) => customerOrderSummary(order, providerSnapshotFor(order, providerFeed))) },
+        { orders: visibleOrders.map((order) => customerOrderSummary(
+          order,
+          providerSnapshotFor(order, providerFeed),
+          paymentFeed.get(order.sourceOrderId),
+        )) },
         { headers: NO_STORE },
       );
       if (daribarSession.rotatedTokens) setDaribarAuthCookies(response, daribarSession.rotatedTokens);

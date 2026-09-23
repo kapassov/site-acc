@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { setDaribarAuthCookies } from "@/lib/daribar/auth";
 import { DaribarCustomerSessionError, daribarCustomerSession } from "@/lib/daribar/customer-session";
+import { getDaribarCustomerOrderPayment, type DaribarOrderPaymentSnapshot } from "@/lib/daribar/order-payments";
 import { getDaribarCustomerOrder, type DaribarOrderSnapshot } from "@/lib/daribar/order-status";
 import { medusaMediaUrl } from "@/lib/media-url";
 import { customerOrderSummary, providerMetadataPatch } from "@/lib/orders/customer-view";
@@ -57,12 +58,17 @@ function safeUrl(value: unknown): string | undefined {
   return url.startsWith("https://") ? url : undefined;
 }
 
-async function orderDetail(order: StoredOrder, snapshot?: DaribarOrderSnapshot) {
+async function orderDetail(
+  order: StoredOrder,
+  snapshot?: DaribarOrderSnapshot,
+  payment?: DaribarOrderPaymentSnapshot | null,
+  paymentAvailable = false,
+) {
   const lines = localLines(order);
   const catalog = await catalogRows(lines.map((line) => line.productId));
   const metadata = order.metadata || {};
   return {
-    ...customerOrderSummary(order, snapshot),
+    ...customerOrderSummary(order, snapshot, payment),
     createdAt: order.createdAt,
     deliveryMethod: order.delivery,
     pickupCode: order.code || null,
@@ -80,10 +86,21 @@ async function orderDetail(order: StoredOrder, snapshot?: DaribarOrderSnapshot) 
     },
     payment: {
       method: cleanText(metadata.payment, 100),
-      status: snapshot?.paid === true ? "paid" : snapshot?.paymentStatus || cleanText(metadata.payment_status, 100),
+      status: payment?.paid === true
+        ? "paid"
+        : payment && payment.status !== "unknown"
+          ? payment.status
+          : snapshot?.paid === true
+            ? "paid"
+            : snapshot?.paymentStatus || cleanText(metadata.payment_status, 100),
+      providerMethod: payment?.method || null,
+      authorized: payment?.authorized === true,
+      paidAt: payment?.paidAt || null,
+      refundAmount: payment?.refundAmount || 0,
+      refundStatus: payment?.refundStatus || null,
     },
     providerStatus: snapshot?.rawStatus || snapshot?.status || cleanText(metadata.provider_status, 100),
-    providerAvailable: Boolean(snapshot),
+    providerAvailable: Boolean(snapshot) || paymentAvailable,
     items: lines.map((line, index) => {
       const product = catalog.get(line.productId);
       const provider = snapshot?.items[index];
@@ -123,18 +140,38 @@ export async function GET(
   if (!order || order.demo === true) return NextResponse.json({ error: "order_not_found" }, { status: 404, headers: PRIVATE_HEADERS });
 
   let snapshot: DaribarOrderSnapshot | undefined;
+  let payment: DaribarOrderPaymentSnapshot | null | undefined;
+  let paymentAvailable = false;
   if (order.sourceSystem === "daribar") {
-    try {
-      snapshot = await getDaribarCustomerOrder(session.accessToken, order.sourceOrderId);
-      await updateStoredOrderMetadata(order.id, providerMetadataPatch(snapshot));
-    } catch (error) {
+    const [orderResult, paymentResult] = await Promise.allSettled([
+      getDaribarCustomerOrder(session.accessToken, order.sourceOrderId),
+      getDaribarCustomerOrderPayment(session.accessToken, order.sourceOrderId),
+    ]);
+    if (orderResult.status === "fulfilled") {
+      snapshot = orderResult.value;
+    } else {
       console.warn("[customer/order] Daribar detail unavailable", {
-        code: error instanceof Error ? error.message.slice(0, 100) : "unknown",
+        code: orderResult.reason instanceof Error ? orderResult.reason.message.slice(0, 100) : "unknown",
         orderId: order.sourceOrderId,
       });
     }
+    if (paymentResult.status === "fulfilled") {
+      payment = paymentResult.value;
+      paymentAvailable = true;
+    } else {
+      console.warn("[customer/order] Daribar payments unavailable", {
+        code: paymentResult.reason instanceof Error ? paymentResult.reason.message.slice(0, 100) : "unknown",
+        orderId: order.sourceOrderId,
+      });
+    }
+    if (snapshot || payment) {
+      await updateStoredOrderMetadata(order.id, providerMetadataPatch(snapshot, payment));
+    }
   }
-  const response = NextResponse.json({ order: await orderDetail(order, snapshot) }, { headers: PRIVATE_HEADERS });
+  const response = NextResponse.json(
+    { order: await orderDetail(order, snapshot, payment, paymentAvailable) },
+    { headers: PRIVATE_HEADERS },
+  );
   if (session.rotatedTokens) setDaribarAuthCookies(response, session.rotatedTokens);
   return response;
 }

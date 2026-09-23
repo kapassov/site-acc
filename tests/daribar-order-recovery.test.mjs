@@ -31,7 +31,7 @@ test("customer orders recover Daribar storefront orders with the verified profil
 
   assert.ok(session >= 0 && daribarBranch > session && localOrders > daribarBranch);
   assert.ok(feed > localOrders && fallback > feed && medusaBranch > fallback);
-  assert.match(route, /providerMetadataPatch\(snapshot\)/);
+  assert.match(route, /providerMetadataPatch\(snapshot, payment\)/);
   assert.match(route, /setDaribarAuthCookies\(response, daribarSession\.rotatedTokens\)/);
   assert.match(route, /const medusaToken = cookieStore\.get\("ms_cust"\)/);
   assert.match(route, /token: medusaToken/);
