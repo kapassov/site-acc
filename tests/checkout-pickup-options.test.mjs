@@ -12,6 +12,9 @@ test("pickup options route accepts canonical Medusa identities and reads live Da
   assert.match(route, /requestDaribarStockQuotes\(\{ items, city: city \|\| "Алматы"/);
   assert.match(route, /source: "daribar_v3", degraded: false/);
   assert.match(route, /error instanceof DaribarStockQuoteError \? error\.status : 503/);
+  const mapping = await read("../src/lib/daribar/delivery-mapping.ts");
+  assert.match(mapping, /return withRegistryCoordinates\(\{ id: row\.id, sourceCode: row\.source_code/);
+  assert.match(mapping, /row\.latitude == null \? undefined : Number\(row\.latitude\)/);
 });
 
 test("pickup query requires every exact variant, quantity and current verified snapshot", async () => {

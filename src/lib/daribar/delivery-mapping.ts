@@ -3,6 +3,7 @@ import type { StandardNLine } from "../standardn-commerce.ts";
 import { detectCheckoutItemsSource, type CanonicalCheckoutItem } from "../checkoutItems.ts";
 import { medusaKnownPriceSql } from "../medusa-stock.ts";
 import { exactKzt } from "../money.ts";
+import { withRegistryCoordinates } from "../pharmacy-coordinate-registry.ts";
 import { DaribarDeliveryError, type DaribarDeliveryItem } from "./delivery.ts";
 import { daribarSkuFromIds } from "./ids.ts";
 
@@ -152,11 +153,13 @@ function publicPharmacy(row: PharmacyMappingRow | undefined): DeliveryMappedPhar
   if (!row || !/^sloc_[A-Za-z0-9]+$/.test(row.id) || !/^[A-Za-z0-9_-]{1,128}$/.test(row.source_code)) return null;
   const city = row.city?.trim() || (/боролдай/iu.test(`${row.name} ${row.address || ""}`) ? "Алматы" : "");
   if (!city) return null;
-  const lat = Number(row.latitude), lon = Number(row.longitude);
-  return { id: row.id, sourceCode: row.source_code, name: row.name, city, address: row.address || row.name,
-    ...(Number.isFinite(lat) && Math.abs(lat) <= 90 ? { lat } : {}),
-    ...(Number.isFinite(lon) && Math.abs(lon) <= 180 ? { lon } : {}),
-    ...(row.hours?.trim() ? { hours: row.hours.trim() } : {}) };
+  const lat = row.latitude == null ? undefined : Number(row.latitude);
+  const lon = row.longitude == null ? undefined : Number(row.longitude);
+  return withRegistryCoordinates({ id: row.id, sourceCode: row.source_code, name: row.name, city,
+    address: row.address || row.name,
+    ...(lat !== undefined && Number.isFinite(lat) && Math.abs(lat) <= 90 ? { lat } : {}),
+    ...(lon !== undefined && Number.isFinite(lon) && Math.abs(lon) <= 180 ? { lon } : {}),
+    hours: row.hours?.trim() || "" });
 }
 export async function mapLocalPharmacyToDaribar(pharmacyId: string): Promise<DeliveryMappedPharmacy> {
   const db = await ordersDatabasePool();
