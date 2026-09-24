@@ -277,6 +277,7 @@ export function projectDaribarCatalog(
 ): DaribarCatalogProjection {
   const normalizedQuery = searchAlreadyApplied ? { ...query, q: "" } : query;
   const matched = filterAndSortCatalog(sourceProducts, normalizedQuery, {
+    visibleOnly: true,
     // Typesense/native search has already ranked medical name, dosage and form.
     // Never let catalogue merchandising displace an exact search match.
     prioritizeOrderableOtc: !(searchAlreadyApplied && query.sort === "relevance"),

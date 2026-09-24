@@ -1,5 +1,5 @@
 import type { CatalogFacets, CatalogQuery } from "../catalog-query.ts";
-import { catalogBrandKey, prioritizeOrderableOtcProducts } from "../catalog-query.ts";
+import { catalogBrandKey, isVisibleCatalogProduct, prioritizeOrderableOtcProducts } from "../catalog-query.ts";
 import type { PriceInfo } from "../price-info.ts";
 import type { Brand, Category, Product } from "../types.ts";
 import type { ProductSearchEngine, ProductSearchMetadata } from "../search/search-metadata.ts";
@@ -523,7 +523,7 @@ export async function getDaribarCatalogPage(query: CatalogQuery, city?: string, 
 export async function getDaribarProducts(limit = 100, city?: string): Promise<Product[]> {
   if (!daribarCatalogEnabled()) return [];
   const snapshot = await categorySnapshot(city);
-  return prioritizeOrderableOtcProducts(snapshot.products)
+  return prioritizeOrderableOtcProducts(snapshot.products.filter(isVisibleCatalogProduct))
     .slice(0, Math.min(250, Math.max(1, Math.trunc(limit) || 100)));
 }
 
@@ -543,7 +543,7 @@ export async function searchDaribarProductsWithMetadata(
   if (!daribarCatalogEnabled() || !q) return empty;
   const snapshot = await productSearchSnapshot(q, city, options);
   return {
-    products: snapshot.products.slice(0, Math.min(250, Math.max(1, Math.trunc(limit) || 40))),
+    products: snapshot.products.filter(isVisibleCatalogProduct).slice(0, Math.min(250, Math.max(1, Math.trunc(limit) || 40))),
     search: snapshot.search || empty.search,
     engine: snapshot.searchEngine || "daribar",
     generatedAt: snapshot.generatedAt,

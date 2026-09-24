@@ -67,6 +67,17 @@ test("stable Daribar dedupe keeps the first authoritative occurrence of each SKU
   assert.equal(deduped[0].price, 500);
 });
 
+test("public Daribar catalogue hides products without a sellable price or stock", () => {
+  const products = [
+    mapDaribarProduct(raw("SELLABLE")),
+    mapDaribarProduct(raw("NO-PRICE", { min_customer_price: null, quantity: 0, in_stock: false })),
+    mapDaribarProduct(raw("NO-STOCK", { min_customer_price: 1000, quantity: 0, in_stock: false })),
+  ].filter(Boolean);
+  const page = projectDaribarCatalog(products, parseCatalogQuery(new URLSearchParams("limit=24")));
+  assert.deepEqual(page.products.map((product) => product.sku), ["SELLABLE"]);
+  assert.equal(page.matched.length, 1);
+});
+
 test("global filters, facets and sorting are applied before Daribar pagination", () => {
   const products = [
     mapDaribarProduct(raw("A", { manufacturer: "Alpha Pharma", min_customer_price: 900, categories_ids: ["7"] })),
