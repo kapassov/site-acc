@@ -42,6 +42,8 @@ test("checkout offers only full-cart pharmacies and never silently picks the fir
 test("nearest lookup uses full-cart options while GPS stays client-side", async () => {
   const source = await read("../src/lib/checkout/nearest-pickup.ts");
   assert.match(source, /request\("\/api\/checkout\/pickup-options"/);
-  assert.match(source, /body: JSON\.stringify\(\{ items \}\)/);
+  assert.match(source, /body: JSON\.stringify\(\{ items, city: pickupCity \}\)/);
+  assert.match(source, /nearestCity\(location\.lat, location\.lon\)/);
+  assert.match(source, /items\?\.length \? "daribar_v3" : "medusa"/);
   assert.doesNotMatch(source, /JSON\.stringify\([^)]*(?:lat|lon)/);
 });

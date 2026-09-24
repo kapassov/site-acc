@@ -4,22 +4,23 @@ import test from "node:test";
 import { loadNearestPickup, nearestPickupFromPayload, PickupLookupFailure, pickupDistanceLabel } from "../src/lib/checkout/nearest-pickup.ts";
 
 const location = { lat: 51.16, lon: 71.47 };
-const astana = { sourceCode: "ast-02", city: "Астана", address: "Кабанбай батыра, 2", hours: "09:00–21:00", lat: 51.1601, lon: 71.4701 };
-const almaty = { sourceCode: "alm-01", city: "Алматы", address: "Абая, 1", hours: "09:00–21:00", lat: 43.25, lon: 76.9 };
-const directory = (pharmacies = [almaty, astana]) => ({ pharmacies, source: "medusa", degraded: false });
+const astana = { sourceCode: "sloc_ast02", city: "Астана", address: "Кабанбай батыра, 2", hours: "09:00–21:00", lat: 51.1601, lon: 71.4701, total: 1234 };
+const almaty = { sourceCode: "sloc_alm01", city: "Алматы", address: "Абая, 1", hours: "09:00–21:00", lat: 43.25, lon: 76.9, total: 1234 };
+const directory = (pharmacies = [almaty, astana]) => ({ pharmacies, source: "daribar_v3", degraded: false });
+const medusaDirectory = (pharmacies = [almaty, astana]) => ({ pharmacies, source: "medusa", degraded: false });
 
-test("nearest pickup can change city and retains the exact Medusa location identity", () => {
-  const otherAstana = { ...astana, sourceCode: "ast-03", lat: 51.3 };
+test("nearest pickup can change city and retains the exact local location identity", () => {
+  const otherAstana = { ...astana, sourceCode: "sloc_ast03", lat: 51.3 };
   const result = nearestPickupFromPayload(directory([almaty, otherAstana, astana]), location);
   assert.equal(result.pharmacy, astana);
-  assert.equal(result.pharmacy.sourceCode, "ast-02");
+  assert.equal(result.pharmacy.sourceCode, "sloc_ast02");
   assert.equal(result.city, "Астана");
   assert.deepEqual(result.points, [otherAstana, astana]);
   assert.ok(result.distanceKm > 0 && result.distanceKm < 0.02);
 });
 
 test("nearest city list handles harmless case and space differences without losing selection", () => {
-  const sameCity = { ...astana, city: " астана ", sourceCode: "ast-03", lat: 51.3 };
+  const sameCity = { ...astana, city: " астана ", sourceCode: "sloc_ast03", lat: 51.3 };
   const result = nearestPickupFromPayload(directory([almaty, sameCity, astana]), location);
   assert.equal(result.city, "Астана");
   assert.deepEqual(result.points, [sameCity, astana]);
@@ -30,6 +31,12 @@ for (const payload of [null, [], {}, { pharmacies: [] }, { ...directory(), sourc
     assert.throws(() => nearestPickupFromPayload(payload, location), PickupLookupFailure);
   });
 }
+
+test("cart-aware nearest selection rejects the old Medusa directory and unquoted pharmacies", () => {
+  assert.throws(() => nearestPickupFromPayload(medusaDirectory(), location), PickupLookupFailure);
+  assert.throws(() => nearestPickupFromPayload(directory([{ ...astana, total: 0 }, { ...almaty, total: NaN }]), location), PickupLookupFailure);
+  assert.throws(() => nearestPickupFromPayload(directory([{ ...astana, sourceCode: "ast-02" }]), location), PickupLookupFailure);
+});
 
 test("nearest pickup never chooses an entry without a real source code or usable coordinates", () => {
   const malformed = [
@@ -63,10 +70,10 @@ test("lookup loads only the public all-city directory, never sending device coor
     assert.equal(url, "/api/pharmacies?scope=all");
     assert.deepEqual(Object.keys(init), ["signal"]);
     assert.ok(init.signal instanceof AbortSignal);
-    return Response.json(directory());
+    return Response.json(medusaDirectory());
   });
   assert.equal(calls, 1);
-  assert.equal(result.pharmacy.sourceCode, "ast-02");
+  assert.equal(result.pharmacy.sourceCode, "sloc_ast02");
 });
 
 test("cart-aware lookup requests only locations that can fulfil the complete cart", async () => {
@@ -75,15 +82,15 @@ test("cart-aware lookup requests only locations that can fulfil the complete car
     assert.equal(url, "/api/checkout/pickup-options");
     assert.equal(init.method, "POST");
     assert.equal(init.headers["content-type"], "application/json");
-    assert.deepEqual(JSON.parse(init.body), { items });
+    assert.deepEqual(JSON.parse(init.body), { items, city: "Астана" });
     assert.doesNotMatch(init.body, /51\.16|71\.47|lat|lon/);
     return Response.json(directory());
   }, items);
-  assert.equal(result.pharmacy.sourceCode, "ast-02");
+  assert.equal(result.pharmacy.sourceCode, "sloc_ast02");
 });
 
 test("coordinate-free eligible pharmacies produce a distinct actionable failure", () => {
-  const point = { sourceCode: "sloc_A1", city: "Алматы", address: "Абая, 1", hours: "09:00–21:00" };
+  const point = { sourceCode: "sloc_A1", city: "Алматы", address: "Абая, 1", hours: "09:00–21:00", total: 1234 };
   assert.throws(() => nearestPickupFromPayload(directory([point]), location), (error) => {
     assert.ok(error instanceof PickupLookupFailure);
     assert.equal(error.code, "coordinates_unavailable");

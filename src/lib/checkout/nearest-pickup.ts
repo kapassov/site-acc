@@ -1,6 +1,7 @@
-import type { PharmacyPoint } from "../pharmacies.ts";
+import { nearestCity, type PharmacyPoint } from "../pharmacies.ts";
 import type { CanonicalCheckoutItem } from "../checkoutItems.ts";
 import { findNearestPharmacy, type DeviceLocation } from "./pickup-geolocation.ts";
+import { isMedusaPickupPoint } from "./pickup-points.ts";
 
 export type NearestPickup = {
   pharmacy: PharmacyPoint;
@@ -46,14 +47,23 @@ function isPickupPoint(value: unknown): value is PharmacyPoint {
     && !(point.lat === 0 && point.lon === 0);
 }
 
-export function nearestPickupFromPayload(payload: unknown, location: DeviceLocation): NearestPickup {
+export function nearestPickupFromPayload(
+  payload: unknown,
+  location: DeviceLocation,
+  expectedSource: "daribar_v3" | "medusa" = "daribar_v3",
+): NearestPickup {
   if (!payload || typeof payload !== "object") throw new PickupLookupFailure("unavailable");
   const data = payload as { source?: unknown; degraded?: unknown; pharmacies?: unknown };
   // A stale/static registry must never be presented as a confirmed nearest pickup point.
-  if (data.source !== "medusa" || data.degraded !== false || !Array.isArray(data.pharmacies)) {
+  if (data.source !== expectedSource || data.degraded !== false || !Array.isArray(data.pharmacies)) {
     throw new PickupLookupFailure("unavailable");
   }
-  const selectable = data.pharmacies.filter(isSelectablePickupPoint);
+  const selectable = data.pharmacies.filter((value) => {
+    if (!isSelectablePickupPoint(value)) return false;
+    if (expectedSource === "medusa") return true;
+    const total = (value as { total?: unknown }).total;
+    return isMedusaPickupPoint(value) && typeof total === "number" && Number.isFinite(total) && total > 0;
+  });
   if (!selectable.length) throw new PickupLookupFailure("empty");
   const points = selectable.filter(isPickupPoint);
   if (!points.length) throw new PickupLookupFailure("coordinates_unavailable");
@@ -87,18 +97,20 @@ export async function loadNearestPickup(
   try {
     // GPS stays on the device. With a cart, the server receives only product
     // identities and quantities and returns locations able to fulfil it.
+    const pickupCity = items?.length ? nearestCity(location.lat, location.lon) : null;
+    if (items?.length && !pickupCity) throw new PickupLookupFailure("empty");
     const response = items?.length
       ? await request("/api/checkout/pickup-options", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ items }),
+          body: JSON.stringify({ items, city: pickupCity }),
           signal: controller.signal,
         })
       : await request("/api/pharmacies?scope=all", { signal: controller.signal });
     if (!response.ok) throw new PickupLookupFailure("unavailable");
     const payload: unknown = await response.json();
     if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
-    return nearestPickupFromPayload(payload, location);
+    return nearestPickupFromPayload(payload, location, items?.length ? "daribar_v3" : "medusa");
   } catch (error) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     if (timedOut) throw new PickupLookupFailure("timeout");
