@@ -39,6 +39,7 @@ STOREFRONT_CATALOG_PROVIDER=shadow
 DARIBAR_ENABLED=true
 DARIBAR_CATALOG_ENABLED=true
 DARIBAR_ORDER_ENABLED=true
+DARIBAR_API_URL=https://prod-backoffice.daribar.com
 DARIBAR_CATALOG_READ_SOURCE=postgres
 DARIBAR_CATALOG_SNAPSHOT_PATH=/var/www/inkar-shop/shared/data/daribar-catalog.snapshot.json
 TYPESENSE_URL=http://127.0.0.1:8108
@@ -69,6 +70,8 @@ Production-профиль: не менее 8 CPU, 16 ГБ RAM и 300 ГБ SSD. �
 
 Корзины разных провайдеров хранятся раздельно. Daribar-корзина содержит native
 SKU в product/variant ID; перед оформлением `/api/cart/availability` и quote
-делают одну live v3-проверку всей корзины в одной аптеке. Создание заказа,
+делают одну live v3-проверку всей корзины в одной аптеке. В Daribar-режиме
+цена и количество в quote берутся из этого же ответа выбранной аптеки;
+старые Medusa-корзины отклоняются как устаревшие. Создание заказа,
 `payment_url`, локальная запись и обновление статуса используют один
 `providerOrderId` Daribar.

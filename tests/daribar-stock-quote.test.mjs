@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDaribarStockQuote } from "../src/lib/daribar/stock-quote-builder.ts";
+import { daribarProductId, daribarVariantId } from "../src/lib/daribar/ids.ts";
 
 const pharmacy = {
   id: "sloc_01TESTPHARMACY",
@@ -75,4 +76,24 @@ test("Daribar stock quote rejects partial, insufficient or missing Medusa-price 
     { sourceCode: "ass-001", sku: "SKU-1", wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
     { sourceCode: "ass-001", sku: "SKU-2", wareId: "unused", name: "B", quantity: 1, quantityDesired: 1, price: 0, analogs: [] },
   ]), pharmacy, missingMedusaPrice), null);
+});
+
+test("native Daribar cart is quoted using current Daribar pharmacy prices, not its catalogue minimum", () => {
+  const native = mappings.map((mapping, index) => ({
+    ...mapping,
+    productId: daribarProductId(mapping.sku),
+    variantId: daribarVariantId(mapping.sku),
+    unitPrice: index === 0 ? 900 : 600,
+  }));
+  const quote = buildDaribarStockQuote(row([
+    { sourceCode: "ass-001", sku: "SKU-1", name: "A", quantity: 2, quantityDesired: 2, basePrice: 1300, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", name: "B", quantity: 3, quantityDesired: 1, basePrice: 950, price: 850, analogs: [] },
+  ]), pharmacy, native);
+  assert.ok(quote);
+  assert.equal(quote.total, 3250);
+  assert.deepEqual(quote.lines.map((line) => line.unitPrice), [1200, 850]);
+  assert.equal(buildDaribarStockQuote(row([
+    { sourceCode: "ass-001", sku: "SKU-1", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", name: "B", quantity: 3, quantityDesired: 1, price: 0, analogs: [] },
+  ]), pharmacy, native), null);
 });

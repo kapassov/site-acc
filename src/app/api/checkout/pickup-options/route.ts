@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { canonicalizeCheckoutItems } from "@/lib/checkoutItems";
+import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/checkoutItems";
+import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { DaribarStockQuoteError, requestDaribarStockQuotes } from "@/lib/daribar/stock-quote";
@@ -24,6 +25,9 @@ export async function POST(request: Request) {
   const city = typeof body?.city === "string" ? body.city.trim() : "";
   if (!items || (city && !/^[\p{L}\p{M} .'-]{1,100}$/u.test(city))) {
     return NextResponse.json({ error: "invalid_request", pharmacies: [] }, { status: 400, headers: NO_STORE });
+  }
+  if (detectCheckoutItemsSource(items) !== storefrontCheckoutSource()) {
+    return NextResponse.json({ error: "stale_cart", pharmacies: [] }, { status: 409, headers: NO_STORE });
   }
   try {
     const quotes = await requestDaribarStockQuotes({ items, city: city || "Алматы", limit: 250 });

@@ -90,6 +90,7 @@ test("checkout route sends only signed Medusa lines to every order sink", async 
   );
 
   assert.match(source, /const items = canonicalizeCheckoutItems\(body\?\.cartItems \?\? body\?\.items\)/);
+  assert.match(source, /detectCheckoutItemsSource\(items\) !== storefrontCheckoutSource\(\)/);
   assert.match(source, /quoteToken: verifiedQuote\.quoteToken, items,/);
   assert.match(source, /recordCompletedMedusaOrder\(\{[\s\S]*?fallbackItems: verifiedQuote\.lines\.map/);
   assert.doesNotMatch(source, /recordCompletedStorefrontOrder/);

@@ -3,6 +3,7 @@ import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/chec
 import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { DaribarStockQuoteError, requestDaribarStockQuotes } from "@/lib/daribar/stock-quote";
+import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   const items = canonicalizeCheckoutItems(Array.isArray(body?.items) ? body.items : []);
   const city = typeof body?.city === "string" ? body.city.normalize("NFKC").trim().slice(0, 100) : "";
   const pharmacyId = typeof body?.pharmacyId === "string" ? body.pharmacyId.trim() : "";
-  if (!items || items.length > 30 || !["medusa", "daribar"].includes(detectCheckoutItemsSource(items) || "")
+  if (!items || items.length > 30 || detectCheckoutItemsSource(items) !== storefrontCheckoutSource()
       || (pharmacyId && !/^sloc_[A-Za-z0-9]+$/.test(pharmacyId))) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
   }
@@ -58,4 +59,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ available: false, source: "daribar_v3", error: code }, { status, headers: NO_STORE });
   }
 }
-

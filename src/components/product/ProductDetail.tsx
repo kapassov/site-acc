@@ -106,9 +106,7 @@ export function ProductDetail({
   // flash "Out of stock" for 10-20 seconds even though checkout could confirm
   // stock moments later.  A definitive live `false` still wins; until then we
   // retain the catalogue availability and checkout remains the final gate.
-  const available = product.stockStale === true
-    ? liveAvailability ?? (product.priceTBD ? (prices?.count ?? 0) > 0 : product.inStock)
-    : product.priceTBD ? (prices?.count ?? 0) > 0 : product.inStock;
+  const available = liveAvailability ?? (product.priceTBD ? (prices?.count ?? 0) > 0 : product.inStock);
   const canBuy = available && Boolean(product.variantId) && unitPrice != null && unitPrice > 0;
   const cartQty = items.find((item) => item.product.id === product.id)?.qty ?? 0;
   const storefrontCategory = categorySlug && !["site", "root", "website"].includes(categorySlug.toLowerCase());
@@ -310,7 +308,9 @@ export function ProductDetail({
             <p className="mt-1 text-xs font-medium text-slate-400">{t("card.priceAsOf", { date: product.stockSourceDate.split("-").reverse().join(".") })}</p>
           )}
 
-          {product.source === "medusa" && <PharmacyAvailability productId={product.id} onAvailabilityChange={setLiveAvailability} />}
+          {(product.source === "medusa" || product.source === "daribar") && (
+            <PharmacyAvailability productId={product.id} onAvailabilityChange={setLiveAvailability} />
+          )}
 
           {/* Цены в аптеках — реальные розничные цены сети per-аптека (calculated_price пуст) */}
           {prices && prices.pharmacies.length > 0 && (

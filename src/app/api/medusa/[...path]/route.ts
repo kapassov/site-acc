@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server.js";
 import { secureMedusaBaseUrl } from "../../../../lib/medusaUrl.ts";
+import { servesDaribarCatalog } from "../../../../lib/catalog-provider.ts";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -303,6 +304,9 @@ function medusaNotConfigured() {
 
 async function forward(request: Request, context: RouteContext) {
   if (request.method !== "GET") return writeNotAllowed();
+  if (servesDaribarCatalog()) {
+    return NextResponse.json({ error: "medusa_catalog_retired" }, { status: 410, headers: { "cache-control": "no-store" } });
+  }
   if (!BASE || !PK) return medusaNotConfigured();
 
   const { path } = await context.params;

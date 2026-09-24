@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { daribarProductAvailabilityRows } from "../src/lib/daribar/product-availability.ts";
 
 const AVAILABILITY = new URL("../src/lib/daribar/availability.ts", import.meta.url);
 const ROUTE = new URL("../src/app/api/availability/[id]/route.ts", import.meta.url);
@@ -42,8 +43,34 @@ test("public availability route intersects live Daribar stock with own Medusa pr
   assert.match(source, /Math\.min\(exact\.quantity, medusaQuantity\)/);
   assert.match(source, /Math\.min\(exact\.quantity, medusaQuantity\) : exact\.quantity/);
   assert.match(source, /medusa_last_known_price\+daribar_v3_stock/);
+  assert.match(source, /if \(servesDaribarCatalog\(\)\)/);
+  assert.match(source, /daribarSkuFromProductId\(id\)/);
+  assert.match(source, /daribarProductAvailabilityRows\(live, mapped, sku\)/);
+  assert.match(source, /source: "daribar_v3_price_and_stock"/);
   assert.match(source, /"no-store"/);
   assert.doesNotMatch(source, /DARIBAR_(?:TOKEN|SERVICE_TOKEN)|authorization/i);
+});
+
+test("native Daribar availability keeps only exact, priced stock at mapped pharmacies", () => {
+  const mapped = new Map([["ass-001", {
+    id: "sloc_A1", sourceCode: "ass-001", name: "АСС", city: "Алматы", address: "Абая 34",
+  }]]);
+  const rows = [
+    { sourceCode: "ass-001", name: "АСС", city: "Алматы", address: "Абая 34", products: [
+      { sku: "ANALOG", quantity: 30, price: 100, analogs: [] },
+      { sku: "SKU-1", quantity: 4, price: 1250, analogs: [] },
+    ] },
+    { sourceCode: "outside", name: "Сторонняя", city: "Алматы", address: "Адрес", products: [
+      { sku: "SKU-1", quantity: 8, price: 900, analogs: [] },
+    ] },
+    { sourceCode: "ass-001", name: "АСС", city: "Алматы", address: "Абая 34", products: [
+      { sku: "SKU-1", quantity: 1, price: 0, analogs: [] },
+    ] },
+  ];
+  assert.deepEqual(daribarProductAvailabilityRows(rows, mapped, "SKU-1"), [{
+    sourceCode: "sloc_A1", name: "АСС", city: "Алматы", address: "Абая 34",
+    lat: undefined, lon: undefined, hours: undefined, quantity: 4, price: 1250,
+  }]);
 });
 
 test("product page renders responsive pharmacy stock states and exact quantities", async () => {
@@ -53,7 +80,8 @@ test("product page renders responsive pharmacy stock states and exact quantities
     readFile(CITY, "utf8"),
   ]);
 
-  assert.match(detail, /product\.source === "medusa" && <PharmacyAvailability productId=\{product\.id\}/);
+  assert.match(detail, /product\.source === "medusa" \|\| product\.source === "daribar"/);
+  assert.match(detail, /<PharmacyAvailability productId=\{product\.id\}/);
   assert.match(ui, /\/api\/availability\/\$\{encodeURIComponent\(productId\)\}/);
   assert.match(ui, /pharmacy\.quantity/);
   assert.match(ui, /tenge\(pharmacy\.price\)/);

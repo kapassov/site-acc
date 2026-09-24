@@ -67,8 +67,8 @@ export async function createCheckoutQuote(input: {
   const source = detectCheckoutItemsSource(items);
   if (source !== "medusa" && source !== "daribar") throw new CheckoutQuoteError(409, "stale_cart");
   try {
-    // The selected catalogue owns identity and price. Daribar v3 remains the
-    // request-time authority for stock and the fulfilment pharmacy.
+    // The selected catalogue owns identity. Daribar v3 supplies live stock
+    // and native Daribar prices for the selected fulfilment pharmacy.
     const preferredPharmacy = input.preferredPharmacy;
     const quoteCity = String(preferredPharmacy?.city || input.deliveryRequest?.city || "").trim();
     let quote = await dependencies.requestStockQuote({

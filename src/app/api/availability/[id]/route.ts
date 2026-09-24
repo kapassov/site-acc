@@ -3,6 +3,9 @@ import { getMedusaProductsByIds, getPharmacyPrices } from "@/lib/medusa";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { daribarSkuForMedusaProduct, mappedDaribarPharmacies } from "@/lib/daribar/delivery-mapping";
 import { searchDaribarProductsV3 } from "@/lib/daribar/product-search-v3";
+import { daribarSkuFromProductId } from "@/lib/daribar/ids";
+import { servesDaribarCatalog } from "@/lib/catalog-provider";
+import { daribarProductAvailabilityRows } from "@/lib/daribar/product-availability";
 export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -10,8 +13,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!rateLimit(`availability:${clientIp(request)}`, 30, 60_000, Date.now())) return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: NO_STORE });
   const { id } = await params;
   const city = (new URL(request.url).searchParams.get("city") || "Алматы").trim();
-  if (!/^prod_[A-Za-z0-9]+$/.test(id) || !/^[\p{L}\p{M} .'-]{1,100}$/u.test(city)) return NextResponse.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
+  if (!/^prod_[A-Za-z0-9_-]+$/.test(id) || !/^[\p{L}\p{M} .'-]{1,100}$/u.test(city)) return NextResponse.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
   try {
+    if (servesDaribarCatalog()) {
+      const sku = daribarSkuFromProductId(id);
+      if (!sku) return NextResponse.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
+      const mapped = await mappedDaribarPharmacies(city);
+      if (!mapped.size) return NextResponse.json({ error: "availability_unavailable" }, { status: 503, headers: NO_STORE });
+      const live = await searchDaribarProductsV3({
+        city,
+        items: [{ sku, countDesired: 1_000_000, priority: 1 }],
+        availability: "all",
+        replacements: false,
+        limit: 1_000,
+      });
+      const pharmacies = daribarProductAvailabilityRows(live, mapped, sku);
+      return NextResponse.json({
+        city,
+        total: pharmacies.length,
+        pharmacies,
+        partial: false,
+        stale: false,
+        source: "daribar_v3_price_and_stock",
+        liveCheckedAt: new Date().toISOString(),
+      }, { headers: NO_STORE });
+    }
     const [info, products, sku, mapped] = await Promise.all([
       getPharmacyPrices(id),
       getMedusaProductsByIds([id]),

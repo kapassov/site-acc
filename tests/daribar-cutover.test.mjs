@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { storefrontCatalogProvider, servesDaribarCatalog } from "../src/lib/catalog-provider.ts";
+import { storefrontCatalogProvider, servesDaribarCatalog, storefrontCheckoutSource } from "../src/lib/catalog-provider.ts";
 import { normalizeDaribarSnapshot } from "../scripts/publish-daribar-catalog.mjs";
 import { readDaribarCatalogDatabase } from "../src/lib/daribar/catalog-db.ts";
 import { validCartItemForProvider } from "../src/lib/cart/medusa-cart.ts";
@@ -16,6 +16,8 @@ test("catalogue provider defaults to Medusa and supports shadow and one-step Dar
   assert.equal(storefrontCatalogProvider({ STOREFRONT_CATALOG_PROVIDER: "shadow" }), "shadow");
   assert.equal(servesDaribarCatalog({ STOREFRONT_CATALOG_PROVIDER: "shadow" }), false);
   assert.equal(servesDaribarCatalog({ STOREFRONT_CATALOG_PROVIDER: "daribar" }), true);
+  assert.equal(storefrontCheckoutSource({ STOREFRONT_CATALOG_PROVIDER: "daribar" }), "daribar");
+  assert.equal(storefrontCheckoutSource({ STOREFRONT_CATALOG_PROVIDER: "shadow" }), "medusa");
   assert.equal(storefrontCatalogProvider({ STOREFRONT_CATALOG_PROVIDER: "invalid" }), "medusa");
 });
 

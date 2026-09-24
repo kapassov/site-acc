@@ -4,6 +4,23 @@ import test from "node:test";
 const ROUTE_URL = new URL("../src/app/api/medusa/[...path]/route.ts", import.meta.url);
 const CONTEXT = { params: Promise.resolve({ path: ["store", "products"] }) };
 
+test("Medusa catalogue proxy is retired when Daribar owns the storefront", async () => {
+  const previous = process.env.STOREFRONT_CATALOG_PROVIDER;
+  const originalFetch = globalThis.fetch;
+  process.env.STOREFRONT_CATALOG_PROVIDER = "daribar";
+  globalThis.fetch = async () => { throw new Error("medusa_must_not_be_contacted"); };
+  try {
+    const { GET } = await import(`${ROUTE_URL.href}?daribar-cutover=${Date.now()}`);
+    const response = await GET(new Request("https://shop.example/api/medusa/store/products"), CONTEXT);
+    assert.equal(response.status, 410);
+    assert.deepEqual(await response.json(), { error: "medusa_catalog_retired" });
+  } finally {
+    if (previous === undefined) delete process.env.STOREFRONT_CATALOG_PROVIDER;
+    else process.env.STOREFRONT_CATALOG_PROVIDER = previous;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function preserveEnvironment(...keys) {
   return Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 }

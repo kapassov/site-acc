@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { StandardNQuote } from "../standardn-commerce.ts";
 import type { DeliveryMappedItem, DeliveryMappedPharmacy } from "./delivery-mapping.ts";
 import type { DaribarV3Pharmacy } from "./product-search-v3.ts";
+import { daribarSkuFromIds } from "./ids.ts";
 
 /** Pure conversion of one complete Daribar pharmacy response into a signed-quote payload. */
 export function buildDaribarStockQuote(
@@ -11,13 +12,15 @@ export function buildDaribarStockQuote(
   now = Date.now(),
 ): StandardNQuote | null {
   const products = new Map(row.products.map((product) => [product.sku, product]));
+  const nativeDaribar = mappings.every((mapping) => daribarSkuFromIds(mapping.productId, mapping.variantId) === mapping.sku);
   let subtotal = 0;
   const lines = mappings.flatMap((mapping) => {
     const product = products.get(mapping.sku);
-    // Daribar is the request-time stock authority only. The sell price remains
-    // the dated Medusa catalogue price that was resolved with the local item.
-    if (!product || product.quantity < mapping.quantity || mapping.unitPrice <= 0) return [];
-    const total = mapping.unitPrice * mapping.quantity;
+    // Native Daribar carts take both quantity and the current pharmacy price
+    // from the same live response. Legacy carts retain their Medusa sell price.
+    const unitPrice = nativeDaribar ? product?.price : mapping.unitPrice;
+    if (!product || product.quantity < mapping.quantity || !unitPrice || unitPrice <= 0) return [];
+    const total = unitPrice * mapping.quantity;
     if (!Number.isSafeInteger(total) || total <= 0) return [];
     subtotal += total;
     return [{
@@ -26,7 +29,7 @@ export function buildDaribarStockQuote(
       quantity: mapping.quantity,
       wareId: mapping.wareId,
       availableQuantity: product.quantity,
-      unitPrice: mapping.unitPrice,
+      unitPrice,
       total,
     }];
   });

@@ -114,7 +114,7 @@ test("Medusa name search canonicalizes mixed scripts and attached numeric labels
   assert.deepEqual(matchMedusaTitles(edgeTitles, "Кастыли Life Cor FS923 L").ids, ["prod_crutches"]);
 });
 test("catalog entry points use the feature-flagged facade while Medusa internals stay isolated", async () => {
-  for (const path of ["src/lib/medusa-catalog.ts", "src/lib/catalog-read.ts", "src/app/api/prices/route.ts", "src/app/api/pharmacies/route.ts"]) {
+  for (const path of ["src/lib/medusa-catalog.ts", "src/lib/catalog-read.ts", "src/app/api/prices/route.ts"]) {
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     assert.doesNotMatch(source, /from ["'][^"']*(?:daribar\/|remote-catalog)/, path);
   }
@@ -122,6 +122,9 @@ test("catalog entry points use the feature-flagged facade while Medusa internals
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     assert.match(source, /storefront-catalog/, path);
   }
+  const pharmacies = await readFile(new URL("../src/app/api/pharmacies/route.ts", import.meta.url), "utf8");
+  assert.match(pharmacies, /if \(servesDaribarCatalog\(\)\)/);
+  assert.match(pharmacies, /mappedDaribarPharmacies\(city\)/);
 });
 
 test("The expensive Medusa title index is revision-aware and prewarmed at server startup", async () => {

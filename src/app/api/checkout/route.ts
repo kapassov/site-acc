@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { CheckoutQuoteError, verifyCheckoutQuote } from "@/lib/checkoutQuote";
 import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/checkoutItems";
+import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 import { recordCompletedDaribarOrder, recordCompletedMedusaOrder, updateStoredOrderMetadata } from "@/lib/orders/store";
 import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import {
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
   }
   const items = canonicalizeCheckoutItems(body?.cartItems ?? body?.items);
   if (!items) return NextResponse.json({ error: "invalid_checkout" }, { status: 400, headers: NO_STORE });
-  if (detectCheckoutItemsSource(items) !== "medusa") {
+  if (detectCheckoutItemsSource(items) !== storefrontCheckoutSource()) {
     return NextResponse.json({ error: "stale_cart" }, { status: 409, headers: NO_STORE });
   }
   // Never infer a cash payment or a delivery choice from an omitted field.

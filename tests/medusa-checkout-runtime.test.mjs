@@ -14,6 +14,7 @@ import { DaribarHttpError } from '../src/lib/daribar/client.ts';
 import { DaribarCheckoutError } from '../src/lib/daribar/checkout.ts';
 import { DaribarDeliveryError, deliveryDestinationHash } from '../src/lib/daribar/delivery.ts';
 import { DaribarDeliveryClaimError } from '../src/lib/daribar/delivery-claim.ts';
+import { daribarProductId, daribarVariantId } from '../src/lib/daribar/ids.ts';
 
 const attemptId='12345678-1234-4123-8123-123456789abc';
 const cartItems=[{productId:'prod_A1',variantId:'variant_V1',quantity:2}];
@@ -32,6 +33,7 @@ function fixture(options={}) {
     'next/server':{NextResponse:{json:(body,config)=>Response.json(body,config)}},
     '@/lib/rateLimit':{clientIp:()=> 'test',rateLimit:()=>true},
     '@/lib/httpBody':bodyReader,'@/lib/checkoutItems':items,'@/lib/money':money,'@/lib/i18n/cities':cities,
+    '@/lib/catalog-provider':{storefrontCheckoutSource:()=>options.catalogProvider||'medusa'},
     '@/lib/checkout/delivery-details':deliveryDetails,
     '@/lib/checkoutQuote':{CheckoutQuoteError,verifyCheckoutQuote:()=> options.invalidQuote?null:signed},
     '@/lib/daribar/auth':{DARIBAR_ACCESS_COOKIE:'daribar_access',DARIBAR_REFRESH_COOKIE:'daribar_refresh',
@@ -78,6 +80,17 @@ test('card creation returns opaque branded payment session, never Kassa URL',asy
 test('pickup ignores forged address and sends signed pharmacy address',async()=>{
   const f=fixture({quote:{...quote(),fulfillment:'pickup'}}),response=await f.POST(request({delivery:'pickup',address:'FORGED'}));
   assert.equal(response.status,201);assert.equal(f.calls.find(c=>c[0]==='medusa')[2].address.address1,'Источник 1');
+});
+test('Daribar storefront accepts native SKU cart and rejects an old Medusa cart',async()=>{
+  const nativeItems=[{productId:daribarProductId('SKU-NATIVE'),variantId:daribarVariantId('SKU-NATIVE'),quantity:2}];
+  const signed={...quote(),source:'daribar',fulfillment:'pickup',lines:[{
+    ...nativeItems[0],wareId:'SKU-NATIVE',unitPrice:377.89,total:755.78,
+  }]};
+  const f=fixture({daribar:true,catalogProvider:'daribar',quote:signed});
+  assert.equal((await f.POST(request({cartItems,delivery:'pickup'}))).status,409);
+  assert.equal((await f.POST(request({cartItems:nativeItems,delivery:'pickup'}))).status,201);
+  assert.ok(f.calls.some(c=>c[0]==='daribar-order'));
+  assert.ok(!f.calls.some(c=>c[0]==='medusa'));
 });
 test('Daribar courier checkout creates both the commercial order and courier claim',async()=>{
   const destination='Тест 1';
