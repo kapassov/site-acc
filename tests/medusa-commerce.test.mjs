@@ -85,7 +85,7 @@ test('courier price and stock anchor keeps Medusa identity while using live Dari
     const result=await createCourierAnchorQuote({items,city:' Алматы '},dependencies);
     assert.equal(result.source,'medusa');
     assert.equal(result.pharmacy.id,'sloc_A1');
-    assert.deepEqual(seen,[{items,city:'Алматы',preferredPharmacyId:undefined}]);
+    assert.deepEqual(seen,[{items,city:'Алматы',preferredPharmacyId:undefined,paymentMethod:'card'}]);
   } finally {
     globalThis.fetch=previous.fetch;
     for(const [key,value] of [['CHECKOUT_QUOTE_SECRET',previous.secret],['MEDUSA_COMMERCE_URL',previous.url],

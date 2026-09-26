@@ -88,6 +88,6 @@ test("global storefront chrome and welcome promo stay hidden during payment", as
   for (const source of [header, topBar, footer, mobileNav, welcome]) {
     assert.match(source, /\/payment/, "payment route is not suppressed in one global component");
   }
-  assert.match(welcome, /if \(paymentFlow \|\| !open\) return null/);
+  assert.match(welcome, /if \(paymentFlow \|\| needsSelection \|\| !open\) return null/);
   assert.match(header, /mobileOpen && !compactOrderFlow/);
 });

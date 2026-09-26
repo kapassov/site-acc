@@ -84,6 +84,7 @@ export async function loadNearestPickup(
   signal: AbortSignal,
   request: typeof fetch = fetch,
   items?: CanonicalCheckoutItem[],
+  paymentMethod: "card" | "cash" = "card",
 ): Promise<NearestPickup> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -103,7 +104,7 @@ export async function loadNearestPickup(
       ? await request("/api/checkout/pickup-options", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ items, city: pickupCity }),
+          body: JSON.stringify({ items, city: pickupCity, paymentMethod }),
           signal: controller.signal,
         })
       : await request("/api/pharmacies?scope=all", { signal: controller.signal });

@@ -27,10 +27,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "stale_cart" }, { status: 409, headers: NO_STORE });
   }
   const fulfillment = body.fulfillment === "pickup" ? "pickup" : "pharmacy";
+  const paymentMethod = body.paymentMethod === "cash" ? "cash" : "card";
   try {
     const quote = await createCheckoutQuote({
       items: items as QuoteItem[],
       fulfillment,
+      paymentMethod,
       preferredPharmacy: body.preferredPharmacy && typeof body.preferredPharmacy === "object"
         ? body.preferredPharmacy as { id?: string; sourceCode?: string; address?: string; city?: string }
         : null,

@@ -11,7 +11,8 @@ export function daribarProductAvailabilityRows(
   return live.flatMap((row) => {
     const local = mapped.get(row.sourceCode);
     const exact = row.products.find((product) => product.sku === sku);
-    if (!local || !exact || exact.quantity < 1 || exact.price <= 0) return [];
+    if (!local || !exact || exact.quantity < 1 || exact.price <= 0 || row.withReserve === false
+        || (row.paymentByCard === false && row.paymentOnSite !== true)) return [];
     return [{
       sourceCode: local.id,
       name: row.name || local.name,
@@ -22,6 +23,8 @@ export function daribarProductAvailabilityRows(
       hours: row.openingHours ?? local.hours,
       quantity: exact.quantity,
       price: exact.price,
+      ...(row.paymentOnSite !== undefined ? { paymentOnSite: row.paymentOnSite } : {}),
+      ...(row.paymentByCard !== undefined ? { paymentByCard: row.paymentByCard } : {}),
     }];
   }).sort((left, right) => (left.price ?? 0) - (right.price ?? 0)
     || left.name.localeCompare(right.name, "ru"));

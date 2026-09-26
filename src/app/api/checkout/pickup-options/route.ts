@@ -23,14 +23,15 @@ export async function POST(request: Request) {
   }
   const items = canonicalizeCheckoutItems(Array.isArray(body?.items) ? body.items : []);
   const city = typeof body?.city === "string" ? body.city.trim() : "";
-  if (!items || (city && !/^[\p{L}\p{M} .'-]{1,100}$/u.test(city))) {
+  const paymentMethod = body?.paymentMethod === "cash" ? "cash" : "card";
+  if (!items || !/^[\p{L}\p{M} .'-]{1,100}$/u.test(city)) {
     return NextResponse.json({ error: "invalid_request", pharmacies: [] }, { status: 400, headers: NO_STORE });
   }
   if (detectCheckoutItemsSource(items) !== storefrontCheckoutSource()) {
     return NextResponse.json({ error: "stale_cart", pharmacies: [] }, { status: 409, headers: NO_STORE });
   }
   try {
-    const quotes = await requestDaribarStockQuotes({ items, city: city || "Алматы", limit: 250 });
+    const quotes = await requestDaribarStockQuotes({ items, city, paymentMethod, limit: 1_000 });
     const pharmacies = quotes.map(({ quote, pharmacy }) => ({
       sourceCode: pharmacy.id,
       name: pharmacy.name,
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
       ...(pharmacy.lat !== undefined ? { lat: pharmacy.lat } : {}),
       ...(pharmacy.lon !== undefined ? { lon: pharmacy.lon } : {}),
     }));
-    return NextResponse.json({ source: "daribar_v3", degraded: false, city: city || null, pharmacies }, {
+    return NextResponse.json({ source: "daribar_v3", degraded: false, city, pharmacies }, {
       status: 200,
       headers: NO_STORE,
     });

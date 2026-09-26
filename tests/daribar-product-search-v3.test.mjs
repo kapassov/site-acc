@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DaribarV3SearchError, searchDaribarProductsV3 } from "../src/lib/daribar/product-search-v3.ts";
+import { DaribarV3SearchError, searchAllDaribarProductsV3, searchDaribarProductsV3 } from "../src/lib/daribar/product-search-v3.ts";
 
 test("v3 stock search sends the ASS integration header and parses exact stock plus analogs", async () => {
   const previousFetch = globalThis.fetch;
@@ -28,6 +28,7 @@ test("v3 stock search sends the ASS integration header and parses exact stock pl
         source: {
           code: "ass-1", network_code: "ass", name: "Аптека АСС", city: "Алматы",
           address: "Абая 1", lat: 43.25, lon: 76.9, opening_hours: "24/7", working_today: true,
+          with_reserve: true, payment_on_site: true, payment_by_card: false,
         },
         products: [{
           source_code: "ass-1", sku: "SKU-1", ware_id: "WARE-1", name: "Товар",
@@ -51,6 +52,9 @@ test("v3 stock search sends the ASS integration header and parses exact stock pl
       assert.equal(rows[0].products[0].price, 1100);
       assert.equal(rows[0].products[0].analogs[0].sku, "SKU-2");
       assert.equal(rows[0].distance, 1.5);
+      assert.equal(rows[0].withReserve, true);
+      assert.equal(rows[0].paymentOnSite, true);
+      assert.equal(rows[0].paymentByCard, false);
     };
   } finally {
     globalThis.fetch = previousFetch;
@@ -61,6 +65,38 @@ test("v3 stock search sends the ASS integration header and parses exact stock pl
     })) {
       if (value == null) delete process.env[key]; else process.env[key] = value;
     }
+  }
+});
+
+test("v3 stock search paginates before the ASS pharmacy mapping can filter results", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousOrigin = process.env.DARIBAR_COMMERCE_API_URL;
+  const offsets = [];
+  try {
+    process.env.DARIBAR_COMMERCE_API_URL = "https://prod-backoffice.daribar.com";
+    globalThis.fetch = async (url) => {
+      const target = new URL(String(url));
+      const offset = Number(target.searchParams.get("offset"));
+      offsets.push(offset);
+      const count = offset === 0 ? 500 : offset === 500 ? 1 : 0;
+      const result = Array.from({ length: count }, (_, index) => {
+        const code = `ass-${offset + index}`;
+        return {
+          source: { code, city: "Алматы", name: code, with_reserve: true, payment_by_card: true },
+          products: [{ source_code: code, sku: "SKU-1", name: "Товар", base_price: 100,
+            price_with_warehouse_discount: 100, quantity: 1, quantity_desired: 1 }],
+        };
+      });
+      return Response.json({ status: "success", result });
+    };
+    const rows = await searchAllDaribarProductsV3({ city: "Алматы", items: [{ sku: "SKU-1", countDesired: 1 }] });
+    assert.equal(rows.length, 501);
+    assert.equal(rows.at(-1).sourceCode, "ass-500");
+    assert.deepEqual(offsets, [0, 500]);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousOrigin == null) delete process.env.DARIBAR_COMMERCE_API_URL;
+    else process.env.DARIBAR_COMMERCE_API_URL = previousOrigin;
   }
 });
 

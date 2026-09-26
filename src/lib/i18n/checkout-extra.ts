@@ -50,7 +50,7 @@ const ru = {
     selected: "Выбрана ближайшая аптека — около {distance} по прямой от вас. Город: {city}.",
     idleHint: "По геолокации устройства. Адрес можно изменить вручную.",
     noneInCity: "В этом городе аптеки не найдены",
-    chooseOnMap: "Выбрать аптеку",
+    chooseOnMap: "Посмотреть все аптеки",
   },
   pickupOptions: {
     loading: "Проверяем наличие всей корзины в аптеках…",
@@ -245,7 +245,7 @@ const kz: CheckoutExtraCopy = {
     selected: "Ең жақын дәріхана таңдалды — сізден түзу сызық бойынша шамамен {distance}. Қала: {city}.",
     idleHint: "Құрылғының геолокациясы бойынша. Мекенжайды қолмен өзгертуге болады.",
     noneInCity: "Бұл қалада дәріханалар табылмады",
-    chooseOnMap: "Дәріхананы таңдау",
+    chooseOnMap: "Барлық дәріхананы көру",
   },
   pickupOptions: {
     loading: "Дәріханалардағы бүкіл себеттің бар-жоғын тексеріп жатырмыз…",
@@ -434,7 +434,7 @@ const en: CheckoutExtraCopy = {
     selected: "The nearest pharmacy is selected — about {distance} from you in a straight line. City: {city}.",
     idleHint: "Uses your device location. You can change the address manually.",
     noneInCity: "No pharmacies found in this city",
-    chooseOnMap: "Choose a pharmacy",
+    chooseOnMap: "View all pharmacies",
   },
   pickupOptions: {
     loading: "Checking which pharmacies can fulfil the entire cart…",

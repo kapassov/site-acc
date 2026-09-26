@@ -82,7 +82,7 @@ test("cart-aware lookup requests only locations that can fulfil the complete car
     assert.equal(url, "/api/checkout/pickup-options");
     assert.equal(init.method, "POST");
     assert.equal(init.headers["content-type"], "application/json");
-    assert.deepEqual(JSON.parse(init.body), { items, city: "Астана" });
+    assert.deepEqual(JSON.parse(init.body), { items, city: "Астана", paymentMethod: "card" });
     assert.doesNotMatch(init.body, /51\.16|71\.47|lat|lon/);
     return Response.json(directory());
   }, items);
@@ -188,7 +188,7 @@ test("nearest choice atomically updates city, source identity and invalidates th
   assert.match(handler, /setQuoteRefresh\(/);
   assert.doesNotMatch(handler, /localStorage|sessionStorage|trackEvent|sendBeacon/);
   assert.match(page, /point.sourceCode === pharmacy.sourceCode/);
-  assert.match(handler, /const nearest = await loadNearestPickup\(location, controller.signal, fetch, pickupItems\);\s+if \(controller.signal.aborted \|\| nearestRequest.current !== controller\) return/);
+  assert.match(handler, /const nearest = await loadNearestPickup\(location, controller.signal, fetch, pickupItems, effectivePaymentMethod\);\s+if \(controller.signal.aborted \|\| nearestRequest.current !== controller\) return/);
 });
 
 test("closing the pharmacy map cannot submit the enclosing checkout form", async () => {

@@ -19,6 +19,7 @@ import { ScannerProvider } from "@/lib/ui/ScannerContext";
 import { ScannerModal } from "@/components/scanner/ScannerModal";
 import { PharmaBackdrop } from "@/components/layout/PharmaBackdrop";
 import { WelcomeModal } from "@/components/layout/WelcomeModal";
+import { CityWelcomeModal } from "@/components/layout/CityWelcomeModal";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import { CityProvider } from "@/lib/location/CityContext";
 import { ContentProvider } from "@/lib/content/ContentContext";
@@ -89,6 +90,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <ScannerModal />
                   <ToastViewport />
                   <WelcomeModal />
+                  <CityWelcomeModal />
                 </CartProvider>
               </FavoritesProvider>
               </PushProvider>

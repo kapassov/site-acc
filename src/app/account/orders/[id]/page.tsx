@@ -118,7 +118,7 @@ export default function OrderDetailPage() {
         </section>
       </div>
 
-      {(order.pharmacy.name || order.pharmacy.address || order.pickupCode) && <section className="rounded-2xl border border-slate-100 p-5"><h2 className="font-semibold text-slate-900">{c.pharmacy}</h2>{order.pharmacy.name && <p className="mt-3 text-sm font-medium text-slate-800">{order.pharmacy.name}</p>}{order.pharmacy.address && <p className="mt-1 text-sm text-slate-500">{order.pharmacy.address}</p>}{order.pickupCode && <p className="mt-3 text-sm text-slate-600">{c.code}: <strong className="text-slate-900">{order.pickupCode}</strong></p>}</section>}
+      {(order.pharmacy.address || order.pickupCode) && <section className="rounded-2xl border border-slate-100 p-5"><h2 className="font-semibold text-slate-900">{c.pharmacy}</h2>{order.pharmacy.address && <p className="mt-3 text-sm font-medium text-slate-800">{order.pharmacy.address}</p>}{order.pickupCode && <p className="mt-3 text-sm text-slate-600">{c.code}: <strong className="text-slate-900">{order.pickupCode}</strong></p>}</section>}
 
       <section className="rounded-2xl border border-slate-100 p-5">
         <h2 className="flex items-center gap-2 font-semibold text-slate-900"><Package className="h-5 w-5 text-brand-600" />{c.goods}</h2>

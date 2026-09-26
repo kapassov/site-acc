@@ -4,7 +4,7 @@ import type { PriceInfo } from "../price-info.ts";
 import type { Brand, Category, Product } from "../types.ts";
 import type { ProductSearchEngine, ProductSearchMetadata } from "../search/search-metadata.ts";
 import { typesenseSearchConfigured } from "../search/typesense-client.ts";
-import { parseProductSearchQuery, resolveSourceVowelCorrection } from "../search/product-search-model.ts";
+import { parseProductSearchQuery, resolveSourceVowelFallback } from "../search/product-search-model.ts";
 import { daribarSearchLookupNames, directlyMatchesProductName, guardNativeDaribarSearch, searchDaribarSnapshot } from "./indexed-search.ts";
 import { daribarJson } from "./client.ts";
 import { daribarDefaultCity, isDaribarEnabled } from "./config.ts";
@@ -398,18 +398,27 @@ async function productSearchSnapshot(
   const exactSku = native.products.find(product => product.sku === q);
   let products = exactSku ? [exactSku] : guardNativeDaribarSearch(native.products, q, options.exact, { sourceProducts });
   let matchedQuery: string | null = null;
-  // A provider may return no candidates for a three-vowel misspelling. Resolve only
-  // a unique name in the complete Daribar source, then obtain current city data
-  // using that spelling. Keep the original dose/form constraints on the result.
-  if (!products.length && !options.exact && sourceProducts) {
-    const canonical = resolveSourceVowelCorrection(parseProductSearchQuery(q).nameQuery, sourceProducts);
+  // In degraded mode the provider may return a different medicine for a typo.
+  // A unique source lead-name vowel correction can recover the requested identity,
+  // but a literal provider name (including a newly added SKU) always wins.
+  if (!options.exact && sourceProducts && !native.products.some(product => directlyMatchesProductName(product, q))) {
+    const canonical = resolveSourceVowelFallback(parseProductSearchQuery(q).nameQuery, sourceProducts);
     if (canonical) {
-      const corrected = await keywordSnapshot(canonical, city);
-      products = guardNativeDaribarSearch(corrected.products, q, false, { sourceProducts });
-      native = corrected;
-      const parsed = parseProductSearchQuery(q);
-      if (products.length && !parsed.numbers.length && !parsed.forms.length) {
-        matchedQuery = canonical.charAt(0).toLocaleUpperCase("ru") + canonical.slice(1);
+      try {
+        const corrected = await keywordSnapshot(canonical, city);
+        const resolved = guardNativeDaribarSearch(corrected.products, q, false, { sourceProducts })
+          .filter(product => parseProductSearchQuery(product.name).nameQuery.split(/\s+/u)[0] === canonical);
+        products = resolved;
+        native = corrected;
+        if (resolved.length) {
+          const parsed = parseProductSearchQuery(q);
+          if (!parsed.numbers.length && !parsed.forms.length) {
+            matchedQuery = canonical.charAt(0).toLocaleUpperCase("ru") + canonical.slice(1);
+          }
+        }
+      } catch {
+        // Do not show a different medicine if the unambiguous source identity cannot be hydrated.
+        products = [];
       }
     }
   }

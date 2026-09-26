@@ -32,6 +32,9 @@ export type DaribarV3Pharmacy = {
   name: string;
   city: string;
   address: string;
+  withReserve?: boolean;
+  paymentOnSite?: boolean;
+  paymentByCard?: boolean;
   lat?: number;
   lon?: number;
   openingHours?: string;
@@ -153,6 +156,9 @@ function parsePharmacy(value: unknown): DaribarV3Pharmacy | null {
     name: text(source.name, 500) || sourceCode,
     city: text(source.city, 100),
     address: text(source.address, 500),
+    ...(typeof source.with_reserve === "boolean" ? { withReserve: source.with_reserve } : {}),
+    ...(typeof source.payment_on_site === "boolean" ? { paymentOnSite: source.payment_on_site } : {}),
+    ...(typeof source.payment_by_card === "boolean" ? { paymentByCard: source.payment_by_card } : {}),
     ...(lat !== undefined ? { lat } : {}),
     ...(lon !== undefined ? { lon } : {}),
     ...(text(source.opening_hours, 500) ? { openingHours: text(source.opening_hours, 500) } : {}),
@@ -223,4 +229,25 @@ export async function searchDaribarProductsV3(input: {
     }
     throw error;
   }
+}
+
+/** Pagination happens upstream before the ASS source-code filter. Never treat a partial page set as all stock. */
+export async function searchAllDaribarProductsV3(
+  input: Omit<Parameters<typeof searchDaribarProductsV3>[0], "limit" | "offset">,
+): Promise<DaribarV3Pharmacy[]> {
+  const pageSize = input.items.length > 3 ? 100 : 500;
+  const rows: DaribarV3Pharmacy[] = [];
+  const seen = new Set<string>();
+  for (let page = 0; page < 20; page += 1) {
+    const batch = await searchDaribarProductsV3({ ...input, limit: pageSize, offset: page * pageSize });
+    for (const pharmacy of batch) {
+      if (seen.has(pharmacy.sourceCode)) {
+        throw new DaribarV3SearchError(502, "daribar_product_search_pagination_changed");
+      }
+      seen.add(pharmacy.sourceCode);
+      rows.push(pharmacy);
+    }
+    if (batch.length < pageSize) return rows;
+  }
+  throw new DaribarV3SearchError(502, "daribar_product_search_too_many_pharmacies");
 }

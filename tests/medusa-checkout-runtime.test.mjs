@@ -15,11 +15,13 @@ import { DaribarCheckoutError } from '../src/lib/daribar/checkout.ts';
 import { DaribarDeliveryError, deliveryDestinationHash } from '../src/lib/daribar/delivery.ts';
 import { DaribarDeliveryClaimError } from '../src/lib/daribar/delivery-claim.ts';
 import { daribarProductId, daribarVariantId } from '../src/lib/daribar/ids.ts';
+import { checkoutStockStillMatches } from '../src/lib/checkout-stock-recheck.ts';
+import { DaribarStockQuoteError } from '../src/lib/daribar/stock-quote.ts';
 
 const attemptId='12345678-1234-4123-8123-123456789abc';
 const cartItems=[{productId:'prod_A1',variantId:'variant_V1',quantity:2}];
 const quote=()=>({fulfillment:'pharmacy',quoteToken:'upstream-signed',snapshotId:'a'.repeat(64),
-  subtotal:755.78,total:755.78,expiresAt:new Date(Date.now()+240000).toISOString(),
+  subtotal:755.78,total:755.78,currency:'KZT',expiresAt:new Date(Date.now()+240000).toISOString(),
   pharmacy:{id:'sloc_A1',name:'Аптека',city:'Алматы',address:'Источник 1'},
   lines:[{...cartItems[0],wareId:'12345678-1234-1234-1234-123456789abc',unitPrice:377.89,total:755.78}]});
 
@@ -36,6 +38,12 @@ function fixture(options={}) {
     '@/lib/catalog-provider':{storefrontCheckoutSource:()=>options.catalogProvider||'medusa'},
     '@/lib/checkout/delivery-details':deliveryDetails,
     '@/lib/checkoutQuote':{CheckoutQuoteError,verifyCheckoutQuote:()=> options.invalidQuote?null:signed},
+    '@/lib/checkout-stock-recheck':{checkoutStockStillMatches},
+    '@/lib/daribar/stock-quote':{DaribarStockQuoteError,requestDaribarStockQuote:async input=>{
+      calls.push(['live-stock-check',input]);
+      if(options.stockError)throw options.stockError;
+      return options.liveQuote??{...signed,currency:'KZT',lines:signed.lines.map(line=>({...line,availableQuantity:5}))};
+    }},
     '@/lib/daribar/auth':{DARIBAR_ACCESS_COOKIE:'daribar_access',DARIBAR_REFRESH_COOKIE:'daribar_refresh',
       getDaribarUser:async()=>{calls.push(['auth']);return {phone:'77000000000'};},
       refreshDaribarAuth:async()=>{throw Error('unexpected refresh')},setDaribarAuthCookies:()=>{}},
@@ -90,7 +98,18 @@ test('Daribar storefront accepts native SKU cart and rejects an old Medusa cart'
   assert.equal((await f.POST(request({cartItems,delivery:'pickup'}))).status,409);
   assert.equal((await f.POST(request({cartItems:nativeItems,delivery:'pickup'}))).status,201);
   assert.ok(f.calls.some(c=>c[0]==='daribar-order'));
+  assert.ok(f.calls.some(c=>c[0]==='live-stock-check'));
   assert.ok(!f.calls.some(c=>c[0]==='medusa'));
+});
+test('changed live Daribar stock releases the attempt before creating a provider order',async()=>{
+  const signed={...quote(),source:'daribar',fulfillment:'pickup'};
+  const liveQuote={...signed,currency:'KZT',lines:signed.lines.map(line=>({...line,availableQuantity:1}))};
+  const f=fixture({daribar:true,quote:signed,liveQuote});
+  const response=await f.POST(request({delivery:'pickup'}));
+  assert.equal(response.status,409);
+  assert.equal((await response.json()).error,'quote_stock_or_price_changed');
+  assert.ok(f.calls.some(c=>c[0]==='release'));
+  assert.ok(!f.calls.some(c=>c[0]==='started'||c[0]==='daribar-order'));
 });
 test('Daribar courier checkout creates both the commercial order and courier claim',async()=>{
   const destination='Тест 1';

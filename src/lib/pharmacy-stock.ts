@@ -3,6 +3,7 @@ import { kztMinorUnits } from "./money.ts";
 export type PharmacyStock = {
   sourceCode: string; name: string; city: string; address?: string;
   lat?: number; lon?: number; hours?: string; quantity: number; price?: number;
+  paymentOnSite?: boolean; paymentByCard?: boolean;
 };
 
 /** Availability exposes whole sellable packs, but KZT prices may include tiyn. */
@@ -13,6 +14,8 @@ export function isPharmacyStock(value: unknown): value is PharmacyStock {
   return typeof row.sourceCode === "string" && typeof row.name === "string" && typeof row.city === "string"
     && (row.address == null || typeof row.address === "string")
     && Number.isSafeInteger(row.quantity) && Number(row.quantity) > 0
+    && (row.paymentOnSite === undefined || typeof row.paymentOnSite === "boolean")
+    && (row.paymentByCard === undefined || typeof row.paymentByCard === "boolean")
     && (row.price === undefined || (minor !== null && minor > 0));
 }
 

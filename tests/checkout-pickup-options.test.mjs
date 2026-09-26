@@ -9,7 +9,7 @@ test("pickup options route accepts canonical Medusa identities and reads live Da
   assert.match(route, /readBoundedJson[^\n]+64 \* 1024/);
   assert.match(route, /canonicalizeCheckoutItems/);
   assert.match(route, /rateLimit\(`pickup-options:/);
-  assert.match(route, /requestDaribarStockQuotes\(\{ items, city: city \|\| "Алматы"/);
+  assert.match(route, /requestDaribarStockQuotes\(\{ items, city, paymentMethod, limit: 1_000 \}\)/);
   assert.match(route, /source: "daribar_v3", degraded: false/);
   assert.match(route, /error instanceof DaribarStockQuoteError \? error\.status : 503/);
   const mapping = await read("../src/lib/daribar/delivery-mapping.ts");
@@ -34,7 +34,7 @@ test("pickup query requires every exact variant, quantity and current verified s
 test("checkout offers only full-cart pharmacies and never silently picks the first directory entry", async () => {
   const page = await read("../src/app/checkout/page.tsx");
   assert.match(page, /fetch\("\/api\/checkout\/pickup-options"/);
-  assert.match(page, /JSON\.stringify\(\{ items: pickupItems, city: normalizedCity \}\)/);
+  assert.match(page, /JSON\.stringify\(\{ items: pickupItems, city: normalizedCity, paymentMethod: effectivePaymentMethod \}\)/);
   assert.match(page, /const selectedPharmacy = pharmacyIndex >= 0 \? cityPharmacies\[pharmacyIndex\] : null/);
   assert.match(page, /copy\.pickupOptions\.title/);
   assert.match(page, /tenge\(point\.total\)/);
@@ -45,7 +45,7 @@ test("checkout offers only full-cart pharmacies and never silently picks the fir
 test("nearest lookup uses full-cart options while GPS stays client-side", async () => {
   const source = await read("../src/lib/checkout/nearest-pickup.ts");
   assert.match(source, /request\("\/api\/checkout\/pickup-options"/);
-  assert.match(source, /body: JSON\.stringify\(\{ items, city: pickupCity \}\)/);
+  assert.match(source, /body: JSON\.stringify\(\{ items, city: pickupCity, paymentMethod \}\)/);
   assert.match(source, /nearestCity\(location\.lat, location\.lon\)/);
   assert.match(source, /items\?\.length \? "daribar_v3" : "medusa"/);
   assert.doesNotMatch(source, /JSON\.stringify\([^)]*(?:lat|lon)/);

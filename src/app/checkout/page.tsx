@@ -9,7 +9,8 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { useToast } from "@/lib/ui/ToastContext";
 import { useLang } from "@/lib/i18n/LanguageContext";
 import { checkoutDistance, checkoutExtra, checkoutNumber, checkoutText, type CheckoutExtraCopy } from "@/lib/i18n/checkout-extra";
-import { canonicalCityName, cityDisplayName } from "@/lib/i18n/cities";
+import { cityDisplayName } from "@/lib/i18n/cities";
+import { CITIES, useCity } from "@/lib/location/CityContext";
 import { EmptyCart } from "@/components/cart/EmptyCart";
 import { tenge } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -109,12 +110,14 @@ export default function CheckoutPage() {
   const { user, openLogin } = useAuth();
   const { push } = useToast();
   const { t, plural, lang } = useLang();
+  const { city, setCity, ready: citySelectionReady, needsSelection } = useCity();
   const copy = checkoutExtra[lang];
   const { sendEvent } = usePush();
   const isDemo = user?.demo === true;
 
   const [delivery, setDelivery] = useState<"courier" | "pickup" | "post">("courier");
   const [payment, setPayment] = useState<"card" | "cash">("card");
+  const effectivePaymentMethod = isDemo ? "cash" : payment;
   const [pharmacy, setPharmacy] = useState<PickupPoint | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
@@ -129,7 +132,6 @@ export default function CheckoutPage() {
   const [fieldErrors, setFieldErrors] = useState<CheckoutFieldErrors>({});
   const [nameInput, setNameInput] = useState("");
   const [addr, setAddr] = useState("");
-  const [city, setCity] = useState("Алматы");
   const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails>(() => ({ ...EMPTY_DELIVERY_DETAILS }));
   const [livePharmacies, setLivePharmacies] = useState<{ key: string; city: string; points: PickupOption[] } | null>(null);
   const [pickupOptionsLoading, setPickupOptionsLoading] = useState(false);
@@ -145,7 +147,7 @@ export default function CheckoutPage() {
   const [desktopCheckout, setDesktopCheckout] = useState(false);
   const phoneRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
-  const cityRef = useRef<HTMLInputElement>(null);
+  const cityRef = useRef<HTMLSelectElement>(null);
   const addressRef = useRef<HTMLInputElement>(null);
   const pharmacyRef = useRef<HTMLDivElement>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
@@ -155,7 +157,7 @@ export default function CheckoutPage() {
     .map((item) => ({ productId: item.product.id, variantId: item.product.variantId!, quantity: item.qty })), [selectedItems]);
   const pickupItemsSignature = pickupItems.map((item) => `${item.productId}:${item.variantId}:${item.quantity}`).join("|");
   const normalizedCity = city.trim();
-  const pickupKey = `${normalizedCity.toLocaleLowerCase("ru-RU")}\u0000${pickupItemsSignature}`;
+  const pickupKey = `${normalizedCity.toLocaleLowerCase("ru-RU")}\u0000${effectivePaymentMethod}\u0000${pickupItemsSignature}`;
   const loadedPharmacyKey = livePharmacies?.key;
   const cityPharmacies = livePharmacies && loadedPharmacyKey === pickupKey
     ? livePharmacies.points
@@ -179,7 +181,7 @@ export default function CheckoutPage() {
     : "";
 
   useEffect(() => {
-    if (delivery !== "pickup" || !normalizedCity || !pickupItems.length || loadedPharmacyKey === pickupKey) return;
+    if (delivery !== "pickup" || !citySelectionReady || needsSelection || !normalizedCity || !pickupItems.length || loadedPharmacyKey === pickupKey) return;
     const controller = new AbortController();
     pharmacyListRequest.current = controller;
     const timer = window.setTimeout(() => {
@@ -188,7 +190,7 @@ export default function CheckoutPage() {
       fetch("/api/checkout/pickup-options", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items: pickupItems, city: normalizedCity }),
+        body: JSON.stringify({ items: pickupItems, city: normalizedCity, paymentMethod: effectivePaymentMethod }),
         signal: controller.signal,
       })
         .then((response) => (response.ok ? response.json() : Promise.reject(new Error("pharmacies_unavailable"))))
@@ -221,7 +223,7 @@ export default function CheckoutPage() {
       controller.abort();
       if (pharmacyListRequest.current === controller) pharmacyListRequest.current = null;
     };
-  }, [delivery, normalizedCity, pickupItems, pickupKey, loadedPharmacyKey]);
+  }, [delivery, citySelectionReady, needsSelection, normalizedCity, pickupItems, pickupKey, loadedPharmacyKey, effectivePaymentMethod]);
 
   useEffect(() => () => {
     nearestRequest.current?.abort();
@@ -253,7 +255,7 @@ export default function CheckoutPage() {
   /* eslint-disable react-hooks/set-state-in-effect -- network quote state is intentionally reset when cart/fulfillment changes */
   useEffect(() => {
     const deliveryAddressReady = addr.trim().length > 0 && /\d/.test(addr);
-    if (!pickupItems.length || (delivery === "pickup" && !preferredPharmacyAddress)
+    if (!citySelectionReady || needsSelection || !pickupItems.length || (delivery === "pickup" && !preferredPharmacyAddress)
         || (delivery === "courier" && !deliveryAddressReady)) {
       setQuote(null);
       setQuoteLoading(false);
@@ -267,6 +269,7 @@ export default function CheckoutPage() {
     const timer = window.setTimeout(() => requestCheckoutQuote("/api/checkout/quote", {
         items: pickupItems,
         fulfillment,
+        paymentMethod: effectivePaymentMethod,
         preferredPharmacy: delivery === "pickup" ? {
           id: preferredPharmacySourceCode,
           sourceCode: preferredPharmacySourceCode,
@@ -293,7 +296,7 @@ export default function CheckoutPage() {
         if (!controller.signal.aborted) setQuoteLoading(false);
       }), 450);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [pickupItems, delivery, fulfillment, preferredPharmacyAddress, preferredPharmacyCity, preferredPharmacySourceCode, normalizedCity, addr, quoteRefresh]);
+  }, [citySelectionReady, needsSelection, pickupItems, delivery, fulfillment, effectivePaymentMethod, preferredPharmacyAddress, preferredPharmacyCity, preferredPharmacySourceCode, normalizedCity, addr, quoteRefresh]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -341,7 +344,7 @@ export default function CheckoutPage() {
   const checkoutPhone = desktopCheckout ? formatPhone(user?.phone ?? "") : displayedPhone;
   const nameReady = Boolean(checkoutName.trim());
   const phoneReady = checkoutPhone.replace(/\D/g, "").length >= 11;
-  const cityReady = Boolean(city.trim());
+  const cityReady = citySelectionReady && !needsSelection && Boolean(city.trim());
   const destinationReady = delivery === "pickup" ? Boolean(selectedPharmacy) : addr.trim().length > 0 && /\d/.test(addr);
   const deliveryAddressReady = delivery === "courier" && destinationReady && Boolean(quote) && !quoteError;
   const checkoutRecoverable = formError === "orderStatusUncertain";
@@ -443,12 +446,12 @@ export default function CheckoutPage() {
       const location = await requestDeviceLocation(navigator.geolocation, controller.signal);
       if (controller.signal.aborted) return;
       setNearestStatus("loading");
-      const nearest = await loadNearestPickup(location, controller.signal, fetch, pickupItems);
+      const nearest = await loadNearestPickup(location, controller.signal, fetch, pickupItems, effectivePaymentMethod);
       if (controller.signal.aborted || nearestRequest.current !== controller) return;
       // Apply city, directory and selection together; a late city request must not reset them.
       pharmacyListRequest.current?.abort();
       const eligiblePoints = nearest.points.filter(isPickupOption) as PickupOption[];
-      const nearestKey = `${nearest.city.trim().toLocaleLowerCase("ru-RU")}\u0000${pickupItemsSignature}`;
+      const nearestKey = `${nearest.city.trim().toLocaleLowerCase("ru-RU")}\u0000${effectivePaymentMethod}\u0000${pickupItemsSignature}`;
       setLivePharmacies({ key: nearestKey, city: nearest.city, points: eligiblePoints });
       setCity(nearest.city);
       setPharmacy(nearest.pharmacy);
@@ -523,7 +526,7 @@ export default function CheckoutPage() {
             : firstError === "address" ? addressRef.current
               : pharmacyRef.current;
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (target instanceof HTMLInputElement) target.focus();
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) target.focus();
       return;
     }
     const phoneDigits = phoneValue.replace(/\D/g, "");
@@ -580,7 +583,7 @@ export default function CheckoutPage() {
       window.scrollTo({ top: 0 });
     } catch (error) {
       if (error instanceof Error && error.message === "payment_redirect") return;
-      if (error instanceof Error && /^(?:quote_(?:invalid_or_expired|required|snapshot_changed|stock_or_price_changed|items_mismatch|city_mismatch)|no_pharmacy_can_fulfill_cart|stale_source_snapshot)$/.test(error.message)) {
+      if (error instanceof Error && /^(?:quote_(?:invalid_or_expired|required|snapshot_changed|stock_or_price_changed|items_mismatch|city_mismatch)|no_pharmacy_can_fulfill_cart|stale_source_snapshot|validated_snapshot_unavailable)$/.test(error.message)) {
         setQuote(null);
         setQuoteRefresh((value) => value + 1);
         setFormError("quoteChanged");
@@ -693,7 +696,9 @@ export default function CheckoutPage() {
             <div className={cn("mt-3 space-y-2", delivery === "courier" && "rounded-2xl border border-slate-200 bg-slate-50/50 p-3 sm:p-4")}>
               {delivery === "courier" && <h3 className="font-display text-base font-bold text-slate-900">{copy.deliveryDetails.title}</h3>}
               <Field id="checkout-city" label={copy.field.city} required error={localizedFieldError("city")}>
-                <input id="checkout-city" ref={cityRef} value={cityDisplayName(city, lang)} onChange={(e) => { cancelNearestPickup(); setCity(canonicalCityName(e.target.value)); setPharmacy(null); setLivePharmacies(null); setQuote(null); clearFieldError("city"); }} placeholder={t("co.city")} autoComplete="address-level2" aria-invalid={Boolean(fieldErrors.city)} aria-describedby={fieldErrors.city ? "checkout-city-error" : undefined} className={cn(inputCls, fieldErrors.city && "border-rose-400 bg-rose-50/40 ring-2 ring-rose-100 focus:border-rose-500 focus:ring-rose-100")} />
+                <select id="checkout-city" ref={cityRef} value={city} onChange={(e) => { cancelNearestPickup(); setCity(e.target.value); setPharmacy(null); setLivePharmacies(null); setQuote(null); clearFieldError("city"); }} autoComplete="address-level2" aria-invalid={Boolean(fieldErrors.city)} aria-describedby={fieldErrors.city ? "checkout-city-error" : undefined} className={cn(inputCls, fieldErrors.city && "border-rose-400 bg-rose-50/40 ring-2 ring-rose-100 focus:border-rose-500 focus:ring-rose-100")}>
+                  {CITIES.map((choice) => <option key={choice} value={choice}>{cityDisplayName(choice, lang)}</option>)}
+                </select>
               </Field>
               {delivery === "pickup" ? (
                 <div ref={pharmacyRef} className="space-y-2 scroll-mt-24">
@@ -755,7 +760,7 @@ export default function CheckoutPage() {
                     <div className="rounded-xl border border-slate-200 bg-white p-2">
                       <p className="px-2 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.pickupOptions.title}</p>
                       <div className="max-h-64 space-y-1 overflow-y-auto overscroll-contain">
-                        {cityPharmacies.map((point) => {
+                        {cityPharmacies.slice(0, 3).map((point) => {
                           const active = selectedPharmacy?.sourceCode === point.sourceCode;
                           return (
                             <button key={point.sourceCode} type="button" onClick={() => {
@@ -931,7 +936,7 @@ export default function CheckoutPage() {
                 <span className="font-display text-2xl font-extrabold text-slate-900">{tenge(total)}</span>
               </div>
               {quoteLoading && <p className="mt-2 text-xs text-slate-500">{copy.availability.checkingPrices}</p>}
-              {quote?.pharmacy && <p className="mt-2 text-xs text-brand-700">{checkoutText(copy.availability.preparedBy, { pharmacy: `${quote.pharmacy.name}${quote.pharmacy.address ? `, ${quote.pharmacy.address}` : ""}` })}</p>}
+              {quote?.pharmacy && <p className="mt-2 text-xs text-brand-700">{checkoutText(copy.availability.preparedBy, { pharmacy: quote.pharmacy.address?.trim() || quote.pharmacy.city })}</p>}
               {quoteErrorText && (
                 <div role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   <p>{quoteErrorText}</p>
@@ -1018,7 +1023,7 @@ function CourierPriceChoice({
             )}>{changed ? copy.deliveryChoice.priceUpdated : copy.deliveryChoice.priceKept}</span>
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            {quote.pharmacy.name}{quote.pharmacy.address ? ` · ${quote.pharmacy.address}` : ""}
+            {quote.pharmacy.address?.trim() || quote.pharmacy.city}
           </p>
         </div>
       </div>

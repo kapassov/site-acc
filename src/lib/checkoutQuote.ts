@@ -59,6 +59,7 @@ const DEFAULT_QUOTE_DEPENDENCIES: CheckoutQuoteDependencies = {
 };
 export async function createCheckoutQuote(input: {
   items: QuoteItem[]; fulfillment: CheckoutFulfillment;
+  paymentMethod?: "card" | "cash";
   preferredPharmacy?: { id?: string; sourceCode?: string; address?: string; city?: string } | null;
   deliveryRequest?: CheckoutDeliveryRequest | null;
 }, dependencies: CheckoutQuoteDependencies = DEFAULT_QUOTE_DEPENDENCIES): Promise<CheckoutQuote> {
@@ -75,6 +76,7 @@ export async function createCheckoutQuote(input: {
       items,
       city: quoteCity,
       preferredPharmacyId: preferredPharmacy?.id || preferredPharmacy?.sourceCode,
+      paymentMethod: input.paymentMethod || "card",
     });
     let delivery: CheckoutDeliveryQuote | undefined;
     if (isDaribarDeliveryEnabled() && input.fulfillment === "pharmacy") {
@@ -91,7 +93,8 @@ export async function createCheckoutQuote(input: {
         // returned by the same live Daribar v3 full-basket search.
         if (input.deliveryRequest.mode !== "pharmacy" || !retryablePharmacyDeliveryError(error)) throw error;
         const candidates: DaribarStockQuote[] = await dependencies.requestStockQuotes({
-          items, city: input.deliveryRequest.city || quote.pharmacy.city, limit: 20,
+          items, city: input.deliveryRequest.city || quote.pharmacy.city,
+          paymentMethod: input.paymentMethod || "card", limit: 20,
         });
         let lastError: unknown = error;
         for (const candidate of candidates) {
@@ -126,6 +129,7 @@ export async function createCheckoutQuote(input: {
           items,
           city: resolved.pharmacy.city,
           preferredPharmacyId: resolved.pharmacy.id,
+          paymentMethod: input.paymentMethod || "card",
         });
         if (quote.pharmacy.id !== resolved.pharmacy.id) throw new CheckoutQuoteError(409, "delivery_pharmacy_mismatch");
       }

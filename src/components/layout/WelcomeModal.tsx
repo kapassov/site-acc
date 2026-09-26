@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useLang } from "@/lib/i18n/LanguageContext";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/cn";
+import { useCity } from "@/lib/location/CityContext";
 
 /** Приветственное окно для новых посетителей (один раз, помним в localStorage). */
 export function WelcomeModal() {
@@ -13,11 +14,12 @@ export function WelcomeModal() {
   const paymentFlow = pathname.startsWith("/payment");
   const { t } = useLang();
   const { openLogin } = useAuth();
+  const { ready: cityReady, needsSelection } = useCity();
   const [open, setOpen] = useState(false);
   const [enter, setEnter] = useState(false);
 
   useEffect(() => {
-    if (paymentFlow) return;
+    if (paymentFlow || !cityReady || needsSelection) return;
     let t1: ReturnType<typeof setTimeout>;
     let t2: ReturnType<typeof setTimeout>;
     try {
@@ -34,7 +36,7 @@ export function WelcomeModal() {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [paymentFlow]);
+  }, [paymentFlow, cityReady, needsSelection]);
 
   const close = () => {
     setEnter(false);
@@ -59,7 +61,7 @@ export function WelcomeModal() {
     }, 250);
   };
 
-  if (paymentFlow || !open) return null;
+  if (paymentFlow || needsSelection || !open) return null;
 
   const features = [
     { icon: Truck, text: t("welcome.f1") },

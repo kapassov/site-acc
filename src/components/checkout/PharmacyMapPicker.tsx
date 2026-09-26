@@ -7,6 +7,7 @@ import { hasPickupCoordinates, type PickupPoint } from "@/lib/checkout/pickup-po
 import { loadYandexMaps } from "@/lib/yandexMaps";
 import { useLang } from "@/lib/i18n/LanguageContext";
 import { checkoutExtra, checkoutText } from "@/lib/i18n/checkout-extra";
+import { tenge } from "@/lib/format";
 
 // Карта выбора аптеки для самовывоза на Яндекс Картах (ключ NEXT_PUBLIC_YANDEX_MAPS_KEY).
 // Список и выбор работают и без карты (fallback), чекаут не ломается. Зеркалит PharmacyMapScreen во Flutter.
@@ -18,7 +19,7 @@ export function PharmacyMapPicker({
   open: boolean;
   initialIndex: number;
   city: string;
-  points: PickupPoint[];
+  points: Array<PickupPoint & { total?: number }>;
   onClose: () => void;
   onPick: (p: PickupPoint, index: number) => void;
 }) {
@@ -115,14 +116,20 @@ export function PharmacyMapPicker({
       <div onClick={onClose} className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
       <div className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-pop">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <h3 className="font-display text-lg font-bold text-slate-900">{copy.title}</h3>
+          <h3 className="font-display text-lg font-bold text-slate-900">{copy.title} · {city}</h3>
           <button type="button" onClick={onClose} aria-label={copy.close} className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
         </div>
         {mappedPoints.length > 0 ? <div className="relative h-64 w-full shrink-0 bg-slate-100">
           <div ref={mapEl} className="h-full w-full" />
           {!YANDEX_MAPS_KEY && (
-            <div className="absolute inset-0 grid place-items-center p-4 text-center text-xs text-slate-500">
-              {copy.notConfigured} (<code>NEXT_PUBLIC_YANDEX_MAPS_KEY</code>)
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center text-xs text-slate-500">
+              <span>{copy.notConfigured}</span>
+              {pts[sel] && hasPickupCoordinates(pts[sel]) && (
+                <a href={yandexRoute(pts[sel])} target="_blank" rel="noopener noreferrer"
+                  className="rounded-lg border border-brand-300 bg-white px-3 py-2 font-semibold text-brand-700 hover:bg-brand-50">
+                  {copy.route}
+                </a>
+              )}
             </div>
           )}
           {YANDEX_MAPS_KEY && !ready && !mapError && (
@@ -139,6 +146,7 @@ export function PharmacyMapPicker({
               <button type="button" onClick={() => setSel(i)} aria-pressed={sel === i} className="min-w-0 flex-1 py-1 text-left">
                 <span className="block text-sm font-semibold text-slate-900">{p.address}</span>
                 <span className="block text-xs text-slate-500">{p.hours}</span>
+                {p.total !== undefined && <span className="block text-xs font-semibold text-brand-700">{tenge(p.total)}</span>}
               </button>
               {hasPickupCoordinates(p) && <a href={yandexRoute(p)} target="_blank" rel="noopener noreferrer"
                 className="flex shrink-0 items-center gap-1 py-2 text-xs font-medium text-brand-700 hover:text-brand-800"><Navigation className="h-3.5 w-3.5" />{copy.route}</a>}

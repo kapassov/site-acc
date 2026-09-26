@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDaribarStockQuote } from "../src/lib/daribar/stock-quote-builder.ts";
+import { supportsDaribarPayment } from "../src/lib/daribar/stock-quote.ts";
 import { daribarProductId, daribarVariantId } from "../src/lib/daribar/ids.ts";
 
 const pharmacy = {
@@ -10,6 +11,16 @@ const pharmacy = {
   city: "Алматы",
   address: "Абая 1",
 };
+
+test("pickup cash includes on-site pharmacies while card excludes cash-only ones", () => {
+  const cashOnly = { withReserve: true, paymentOnSite: true, paymentByCard: false };
+  const cardOnly = { withReserve: true, paymentOnSite: false, paymentByCard: true };
+  assert.equal(supportsDaribarPayment(cashOnly, "cash"), true);
+  assert.equal(supportsDaribarPayment(cashOnly, "card"), false);
+  assert.equal(supportsDaribarPayment(cardOnly, "cash"), false);
+  assert.equal(supportsDaribarPayment(cardOnly, "card"), true);
+  assert.equal(supportsDaribarPayment({ ...cashOnly, withReserve: false }, "cash"), false);
+});
 const mappings = [
   {
     productId: "prod_01TESTPRODUCTA",

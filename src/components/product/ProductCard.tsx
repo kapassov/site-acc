@@ -13,16 +13,26 @@ import { useFavorites } from "@/lib/favorites/FavoritesContext";
 import { useLang } from "@/lib/i18n/LanguageContext";
 import { usePrice } from "@/lib/price/usePrice";
 import { staticPagesCopy } from "@/lib/i18n/static-pages";
+import { useCity } from "@/lib/location/CityContext";
 
 /** Универсальная аптечная карточка: товар, наличие, цена и действие видны сразу. */
 export function ProductCard({ product, boxed = false }: { product: Product; boxed?: boolean }) {
   const { add, items } = useCart();
   const { has, toggle } = useFavorites();
   const { lang, t } = useLang();
+  const { city, ready: cityReady, needsSelection } = useCity();
   const copy = staticPagesCopy[lang];
   const fav = has(product.id);
   const cardRef = useRef<HTMLElement>(null);
+  const stockRequest = useRef<AbortController | null>(null);
   const [priceInView, setPriceInView] = useState(!product.priceTBD);
+  const [checkingStock, setCheckingStock] = useState(false);
+  const [stockError, setStockError] = useState<"city" | "unavailable" | "failed" | null>(null);
+  const stockCopy = {
+    ru: { checking: "Проверяем наличие…", pending: "Проверим перед добавлением", city: "Сначала выберите город", unavailable: "Нет в наличии в вашем городе", failed: "Не удалось проверить остаток. Повторите" },
+    kz: { checking: "Қалдық тексерілуде…", pending: "Қоспас бұрын тексереміз", city: "Алдымен қаланы таңдаңыз", unavailable: "Қалаңызда жоқ", failed: "Қалдықты тексеру мүмкін болмады. Қайталаңыз" },
+    en: { checking: "Checking stock…", pending: "Checked before adding", city: "Choose a city first", unavailable: "Unavailable in your city", failed: "Could not check stock. Try again" },
+  }[lang];
   const sale = discountPercent(product.price, product.oldPrice);
   const href = "/product/" + product.slug;
   const cartQty = items.find((item) => item.product.id === product.id)?.qty ?? 0;
@@ -30,6 +40,10 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
   const confirmedOut = product.source === "medusa" && product.stockStale === false && !product.inStock;
   const historicalPrice = product.source === "medusa" && product.stockStale === true && !product.priceTBD && product.price > 0;
   const priceDate = product.stockSourceDate?.split("-").reverse().join(".");
+
+  useEffect(() => {
+    return () => stockRequest.current?.abort();
+  }, [city, product.id]);
 
   // Реальная цена «от X ₸» по аптекам (calculated_price пуст) — лениво, как в приложении.
   useEffect(() => {
@@ -52,15 +66,40 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
   const lazyMin = usePrice(product.id, Boolean(product.priceTBD && priceInView && !confirmedOut));
   const buyPrice: number | null = product.priceTBD ? (typeof lazyMin === "number" ? lazyMin : null) : product.price;
   const available = !confirmedOut && (product.priceTBD ? typeof lazyMin === "number" : product.inStock);
-  // A stale catalogue stock bit is never authoritative. Priced products can
-  // enter the draft cart; the complete basket is checked live with Daribar at
-  // checkout. Only a fresh, explicitly confirmed zero blocks the action.
+  // Catalogue stock is only a display hint. Daribar items get an exact live
+  // city/SKU check on click, then the full basket is rechecked at checkout.
   const canAddToCart = Boolean(product.variantId && !product.prescription && buyPrice && !confirmedOut);
 
-  const handleAdd = (e: React.MouseEvent) => {
+  const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (buyPrice == null) return;
+    if (buyPrice == null || checkingStock) return;
+    if (product.source === "daribar") {
+      if (!cityReady || needsSelection || !city.trim()) { setStockError("city"); return; }
+      setCheckingStock(true);
+      setStockError(null);
+      const controller = new AbortController();
+      stockRequest.current = controller;
+      try {
+        const response = await fetch(`/api/availability/${encodeURIComponent(product.id)}?city=${encodeURIComponent(city)}`,
+          { cache: "no-store", headers: { accept: "application/json" }, signal: controller.signal });
+        if (!response.ok) throw new Error("stock_check_failed");
+        const payload = await response.json() as { pharmacies?: Array<{ quantity?: number; price?: number }> };
+        if (controller.signal.aborted) return;
+        const offers = Array.isArray(payload.pharmacies) ? payload.pharmacies : [];
+        const priced = offers.filter((offer) => Number.isSafeInteger(offer.quantity) && Number(offer.quantity) >= 1
+          && typeof offer.price === "number" && Number.isFinite(offer.price) && offer.price > 0);
+        if (!priced.length) { setStockError("unavailable"); return; }
+        const livePrice = Math.min(...priced.map((offer) => offer.price!));
+        add({ ...product, price: livePrice, priceTBD: false });
+      } catch {
+        if (!controller.signal.aborted) setStockError("failed");
+      } finally {
+        if (stockRequest.current === controller) stockRequest.current = null;
+        setCheckingStock(false);
+      }
+      return;
+    }
     add(product.priceTBD ? { ...product, price: buyPrice, priceTBD: false } : product);
   };
 
@@ -118,6 +157,8 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
         <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium sm:mt-2.5 sm:text-xs">
           {product.prescription ? (
             <span className="text-amber-700">{t("card.rxOnly")}</span>
+          ) : product.source === "daribar" ? (
+            <span className="text-slate-500">{stockCopy.pending}</span>
           ) : available ? (
             <><span className="h-1.5 w-1.5 rounded-full bg-brand-600" /><span className="text-brand-700">{t("card.inStock")}</span></>
           ) : confirmedOut || lazyMin !== undefined ? (
@@ -145,7 +186,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
           <button
             type="button"
             onClick={handleAdd}
-            disabled={cartQty > 0}
+            disabled={cartQty > 0 || checkingStock}
             aria-label={cartQty > 0 ? t("card.added") : t("pdp.addToCart")}
             className={cn(
               "mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-semibold transition sm:mt-3 sm:rounded-xl sm:text-sm",
@@ -154,7 +195,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
                 : "bg-brand-700 text-white hover:bg-brand-800",
             )}
           >
-            {cartQty > 0 ? <><Check className="h-4 w-4" />{t("card.added")}</> : <><ShoppingBag className="h-4 w-4" />{t("pdp.addToCart")}</>}
+            {cartQty > 0 ? <><Check className="h-4 w-4" />{t("card.added")}</> : checkingStock ? stockCopy.checking : <><ShoppingBag className="h-4 w-4" />{t("pdp.addToCart")}</>}
           </button>
         ) : available && !product.prescription ? (
           <Link href={href} className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand-200 bg-brand-50 text-[13px] font-semibold sm:mt-3 sm:rounded-xl sm:text-sm text-brand-800 transition hover:bg-brand-100">
@@ -168,6 +209,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
             {product.prescription ? t("card.rxOnly") : (confirmedOut || lazyMin !== undefined ? t("card.out") : t("card.priceTBD"))}
           </div>
         )}
+        {stockError && <p role="status" className="mt-1.5 text-xs text-amber-700">{stockCopy[stockError]}</p>}
       </div>
     </article>
   );

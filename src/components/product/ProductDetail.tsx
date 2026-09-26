@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Heart, ShoppingCart, Truck, Store, Check, ChevronDown, ClipboardList, MapPin } from "lucide-react";
 import type { Product } from "@/lib/types";
@@ -17,6 +17,7 @@ import { tenge, discountPercent } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { trackEvent } from "@/lib/analytics/client";
 import { PharmacyAvailability } from "./PharmacyAvailability";
+import { useCity } from "@/lib/location/CityContext";
 
 export function ProductDetail({
   product: initialProduct,
@@ -37,14 +38,19 @@ export function ProductDetail({
   const [prices, setPrices] = useState<PriceInfo | null | undefined>(initialPrices);
   const { add, items } = useCart();
   const { has, toggle } = useFavorites();
-  const { t, plural } = useLang();
+  const { t, plural, lang } = useLang();
+  const { city, ready: cityReady, needsSelection } = useCity();
   const fav = has(product.id);
   const [qty, setQty] = useState(1);
   const [openFaq, setOpenFaq] = useState(-1);
   const [selImg, setSelImg] = useState(0);
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const [showStickyPurchase, setShowStickyPurchase] = useState(false);
-  const [liveAvailability, setLiveAvailability] = useState<boolean | null>(null);
+  const [liveAvailability, setLiveAvailability] = useState<{ city: string; maximum: number | null } | null>(null);
+  const onAvailabilityChange = useCallback((checkedCity: string, maximum: number | null) => {
+    setLiveAvailability((current) => current?.city === checkedCity && current.maximum === maximum
+      ? current : { city: checkedCity, maximum });
+  }, []);
   const purchaseActionsRef = useRef<HTMLDivElement>(null);
   const hasRichInitial = Boolean(
     initialProduct.description
@@ -106,7 +112,12 @@ export function ProductDetail({
   // flash "Out of stock" for 10-20 seconds even though checkout could confirm
   // stock moments later.  A definitive live `false` still wins; until then we
   // retain the catalogue availability and checkout remains the final gate.
-  const available = liveAvailability ?? (product.priceTBD ? (prices?.count ?? 0) > 0 : product.inStock);
+  const currentMaximum = liveAvailability?.city === city ? liveAvailability.maximum : null;
+  const stockPending = product.source === "daribar" && currentMaximum === null;
+  const stockPendingText = { ru: "Наличие уточняется", kz: "Қалдығы нақтылануда", en: "Checking availability" }[lang];
+  const available = product.source === "daribar"
+    ? cityReady && !needsSelection && currentMaximum !== null && currentMaximum >= qty
+    : (currentMaximum !== null ? currentMaximum >= qty : product.priceTBD ? (prices?.count ?? 0) > 0 : product.inStock);
   const canBuy = available && Boolean(product.variantId) && unitPrice != null && unitPrice > 0;
   const cartQty = items.find((item) => item.product.id === product.id)?.qty ?? 0;
   const storefrontCategory = categorySlug && !["site", "root", "website"].includes(categorySlug.toLowerCase());
@@ -232,7 +243,7 @@ export function ProductDetail({
           )}
           <div className="mt-3 flex flex-wrap items-end gap-2 sm:mt-5 sm:gap-3">
             {product.priceTBD ? (
-              canBuy ? (
+              unitPrice != null && unitPrice > 0 ? (
                 <span className="font-display text-2xl font-extrabold text-slate-900 sm:text-3xl">{t("card.from")} {tenge(unitPrice!)}</span>
               ) : (
                 <span className="font-display text-2xl font-extrabold text-slate-500">{t("card.priceTBD")}</span>
@@ -263,7 +274,9 @@ export function ProductDetail({
             </div>
           ) : (
             <>
-              {product.priceTBD && prices == null ? (
+              {stockPending ? (
+                <div className="mt-4 text-sm font-medium text-slate-500" role="status">{stockPendingText}</div>
+              ) : product.priceTBD && prices == null ? (
                 <div className="mt-4 text-sm font-medium text-slate-500">{t("card.priceTBD")}</div>
               ) : available ? (
                 <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-brand-700 sm:mt-4 sm:gap-2 sm:text-sm">
@@ -290,8 +303,8 @@ export function ProductDetail({
                   )}
                 >
                   {cartQty > 0 ? <Check className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" /> : <ShoppingCart className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />}
-                  <span className="min-w-0 truncate sm:hidden">{cartQty > 0 ? t("card.added") : canBuy ? t("pdp.addToCart") : t("card.priceTBD")}</span>
-                  <span className="hidden min-w-0 truncate sm:inline">{cartQty > 0 ? t("card.added") : canBuy ? `${t("pdp.addToCart")} · ${tenge(unitPrice! * qty)}` : t("card.priceTBD")}</span>
+                  <span className="min-w-0 truncate sm:hidden">{cartQty > 0 ? t("card.added") : stockPending ? stockPendingText : canBuy ? t("pdp.addToCart") : t("card.priceTBD")}</span>
+                  <span className="hidden min-w-0 truncate sm:inline">{cartQty > 0 ? t("card.added") : stockPending ? stockPendingText : canBuy ? `${t("pdp.addToCart")} · ${tenge(unitPrice! * qty)}` : t("card.priceTBD")}</span>
                 </button>
                 <button onClick={() => toggle(product.id)} aria-label={fav ? t("a11y.removeFavorite") : t("a11y.addFavorite")} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-accent-200 hover:text-accent-500 sm:h-12 sm:w-12 sm:rounded-xl">
                   <Heart className={cn("h-4 w-4 sm:h-5 sm:w-5", fav && "fill-accent-500 text-accent-500")} />
@@ -309,7 +322,7 @@ export function ProductDetail({
           )}
 
           {(product.source === "medusa" || product.source === "daribar") && (
-            <PharmacyAvailability productId={product.id} onAvailabilityChange={setLiveAvailability} />
+            <PharmacyAvailability productId={product.id} onAvailabilityChange={onAvailabilityChange} />
           )}
 
           {/* Цены в аптеках — реальные розничные цены сети per-аптека (calculated_price пуст) */}

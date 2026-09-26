@@ -39,7 +39,7 @@ test("public availability route intersects live Daribar stock with own Medusa pr
   assert.match(source, /info && !info\.stale && info\.complete/);
   assert.match(source, /daribarSkuForMedusaProduct\(id\)/);
   assert.match(source, /mappedDaribarPharmacies\(city\)/);
-  assert.match(source, /searchDaribarProductsV3/);
+  assert.match(source, /searchAllDaribarProductsV3/);
   assert.match(source, /Math\.min\(exact\.quantity, medusaQuantity\)/);
   assert.match(source, /Math\.min\(exact\.quantity, medusaQuantity\) : exact\.quantity/);
   assert.match(source, /medusa_last_known_price\+daribar_v3_stock/);

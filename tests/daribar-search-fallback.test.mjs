@@ -98,6 +98,29 @@ test("unavailable Typesense and empty misspelled keyword recover through source-
   assert.equal(page.searchEngine, "daribar");
 });
 
+test("оспирин resolves to the source Aspirin identity even when Daribar suggests another product", async t => {
+  const aspirin = raw("ASPIRIN", "Аспирин Кардио таблетки 100 мг №28");
+  const unrelated = raw("OTHER", "Оспирол таблетки 100 мг №28");
+  const state = await fixture(t, {
+    sourceProducts: [aspirin, unrelated],
+    originalProducts: [unrelated],
+    liveProducts: [aspirin],
+  });
+  // The fixture's provider mock responds to its canonical keyword explicitly below.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/api/v1/search/keyword" && JSON.parse(init.body).keyword === "аспирин") {
+      return Response.json({ products: [aspirin], total_count: 1, total_pages: 1, current_page: 1 });
+    }
+    return originalFetch(input, init);
+  };
+  const result = await searchDaribarProductsWithMetadata("оспирин", 48, "Алматы");
+  assert.deepEqual(result.products.map(item => item.sku), ["ASPIRIN"]);
+  assert.equal(result.search.matchedQuery, "Аспирин");
+  assert.ok(state.keywords().includes("оспирин"));
+});
+
 test("native retry keeps original dose, unit, form and package despite broad canonical response", async t => {
   const state = await fixture(t);
   const result = await searchDaribarProductsWithMetadata("пороцетомол 200 мг таблетки №10", 48, "Алматы");

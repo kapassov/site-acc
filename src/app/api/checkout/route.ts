@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { CheckoutQuoteError, verifyCheckoutQuote } from "@/lib/checkoutQuote";
+import { checkoutStockStillMatches } from "@/lib/checkout-stock-recheck";
+import { DaribarStockQuoteError, requestDaribarStockQuote } from "@/lib/daribar/stock-quote";
 import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/checkoutItems";
 import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 import { recordCompletedDaribarOrder, recordCompletedMedusaOrder, updateStoredOrderMetadata } from "@/lib/orders/store";
@@ -179,6 +181,27 @@ export async function POST(req: Request) {
     if (attempt.outcome === "pending") return respond({ error: "checkout_in_progress", recovery: "check_orders" }, 409);
     if (attempt.outcome === "conflict") return respond({ error: "checkout_attempt_conflict" }, 409);
     durableAttemptId = attempt.attemptId;
+    if (verifiedQuote.source === "daribar") {
+      // Replay was handled above. Only a new attempt rechecks the exact basket
+      // at the exact pharmacy before any provider-side order can be created.
+      step = "live_stock_check";
+      let liveQuote;
+      try {
+        liveQuote = await requestDaribarStockQuote({
+          items, city: verifiedQuote.pharmacy.city,
+          preferredPharmacyId: verifiedQuote.pharmacy.id,
+          paymentMethod: payment as "card" | "cash",
+        });
+      } catch (error) {
+        if (error instanceof DaribarStockQuoteError && error.status === 409) {
+          throw new CheckoutQuoteError(409, "quote_stock_or_price_changed");
+        }
+        throw new CheckoutQuoteError(503, "validated_snapshot_unavailable");
+      }
+      if (!checkoutStockStillMatches(verifiedQuote, liveQuote)) {
+        throw new CheckoutQuoteError(409, "quote_stock_or_price_changed");
+      }
+    }
     step = "medusa_order";
     await markCheckoutProviderStarted(durableAttemptId);
     providerStarted = true;

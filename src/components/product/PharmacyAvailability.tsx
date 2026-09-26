@@ -31,6 +31,7 @@ const copy = {
     stale: "Показаны последние доступные данные.",
     partial: "Часть аптек временно не ответила.",
     pricePending: "Цена уточняется",
+    onsiteOnly: "Оплата в аптеке",
   },
   kz: {
     title: "Дәріханалардағы қолжетімділік",
@@ -46,6 +47,7 @@ const copy = {
     stale: "Соңғы қолжетімді деректер көрсетілді.",
     partial: "Кейбір дәріханалар уақытша жауап бермеді.",
     pricePending: "Бағасы нақтылануда",
+    onsiteOnly: "Дәріханада төлеу",
   },
   en: {
     title: "Availability in pharmacies",
@@ -61,12 +63,13 @@ const copy = {
     stale: "Showing the latest available data.",
     partial: "Some pharmacies did not respond temporarily.",
     pricePending: "Price pending",
+    onsiteOnly: "Pay at pharmacy",
   },
 } as const;
 
 const INITIAL_ROWS = 6;
 
-export function PharmacyAvailability({ productId, onAvailabilityChange }: { productId: string; onAvailabilityChange?: (available: boolean | null) => void }) {
+export function PharmacyAvailability({ productId, onAvailabilityChange }: { productId: string; onAvailabilityChange?: (city: string, maximum: number | null) => void }) {
   const { city, ready: cityReady } = useCity();
   const { lang, plural } = useLang();
   const text = copy[lang];
@@ -86,9 +89,9 @@ export function PharmacyAvailability({ productId, onAvailabilityChange }: { prod
 
   useEffect(() => {
     if (!onAvailabilityChange) return;
-    if (loading || error) onAvailabilityChange(null);
-    else if (data) onAvailabilityChange(data.pharmacies.length > 0);
-  }, [data, error, loading, onAvailabilityChange]);
+    if (loading || error) onAvailabilityChange(city, null);
+    else if (data) onAvailabilityChange(city, Math.max(0, ...data.pharmacies.map((pharmacy) => pharmacy.quantity)));
+  }, [city, data, error, loading, onAvailabilityChange]);
 
   useEffect(() => {
     if (!cityReady) return;
@@ -177,8 +180,10 @@ export function PharmacyAvailability({ productId, onAvailabilityChange }: { prod
                 <li key={pharmacy.sourceCode} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:items-center">
                   <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700"><Store className="h-4 w-4" /></span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">{pharmacy.name}</p>
-                    <p className="mt-0.5 text-xs leading-snug text-slate-500">{pharmacy.address || pharmacy.city}</p>
+                    <p className="text-sm font-semibold leading-snug text-slate-900">{pharmacy.address?.trim() || pharmacy.city}</p>
+                    {pharmacy.paymentByCard === false && pharmacy.paymentOnSite === true && (
+                      <p className="mt-0.5 text-xs text-slate-500">{text.onsiteOnly}</p>
+                    )}
                   </div>
                   <span className={`col-start-2 w-fit rounded-full px-2.5 py-1 text-xs font-semibold sm:col-start-auto ${lowStock ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
                     {lowStock ? `${text.left} ${pharmacy.quantity}` : `${pharmacy.quantity} ${text.units}`}

@@ -345,6 +345,40 @@ export function parseProductSearchQuery(input: string): ParsedProductSearchQuery
 
 const vowelSourceNames = new WeakMap<Product, { name: string; words: string[] }>();
 
+function uniqueSourceVowelName(
+  nameQuery: string,
+  products: readonly Product[],
+  minChanges: number,
+  maxChanges: number,
+): { candidate: string | null; matched: boolean } {
+  if (!/^[а-я]{5,40}$/u.test(nameQuery)) return { candidate: null, matched: false };
+  const vowelClass = (word: string) => word.replace(/[ао]/gu, "а").replace(/[еи]/gu, "е");
+  const signature = vowelClass(nameQuery);
+  let corrected: string | null = null;
+  let closest = maxChanges + 1;
+  let ambiguous = false;
+  for (const product of products) {
+    if (product.source !== "daribar" || !product.sku) continue;
+    let cached = vowelSourceNames.get(product);
+    if (!cached || cached.name !== product.name) {
+      cached = { name: product.name, words: normalizeProductSearchText(product.name).split(/[^\p{L}\p{N}]+/u).filter(Boolean) };
+      vowelSourceNames.set(product, cached);
+    }
+    // A real source label always outranks a guessed correction, even when its dose is unavailable.
+    if (cached.words.includes(nameQuery)) return { candidate: null, matched: true };
+    const candidate = cached.words[0] || "";
+    if (candidate.length !== nameQuery.length || vowelClass(candidate) !== signature) continue;
+    const changes = [...nameQuery].reduce((count, letter, index) => count + Number(letter !== candidate[index]), 0);
+    if (changes < minChanges || changes > maxChanges) continue;
+    if (changes < closest) {
+      corrected = candidate;
+      closest = changes;
+      ambiguous = false;
+    } else if (changes === closest && corrected !== candidate) ambiguous = true;
+  }
+  return { candidate: ambiguous ? null : corrected, matched: closest <= maxChanges };
+}
+
 /**
  * Last-resort spelling recovery from a complete source catalog, not a medical synonym.
  * Long Russian names can have three confused unstressed vowels while preserving every
@@ -354,29 +388,16 @@ const vowelSourceNames = new WeakMap<Product, { name: string; words: string[] }>
  */
 export function resolveSourceVowelCorrection(nameQuery: string, products: readonly Product[]): string | null {
   if (!/^[а-я]{9,40}$/u.test(nameQuery)) return null;
-  const vowelClass = (word: string) => word.replace(/[ао]/gu, "а").replace(/[еи]/gu, "е");
-  const signature = vowelClass(nameQuery);
   if ((nameQuery.match(/[бвгджзйклмнпрстфхцчшщ]/gu)?.length ?? 0) < 4) return null;
-  let corrected: string | null = null;
-  for (const product of products) {
-    if (product.source !== "daribar" || !product.sku) continue;
-    let cached = vowelSourceNames.get(product);
-    if (!cached || cached.name !== product.name) {
-      cached = { name: product.name, words: normalizeProductSearchText(product.name).split(/[^\p{L}\p{N}]+/u).filter(Boolean) };
-      vowelSourceNames.set(product, cached);
-    }
-    // An existing literal name must not be replaced, even if its dose is unavailable.
-    if (cached.words.includes(nameQuery)) return null;
-    const candidate = cached.words[0] || "";
-    if (candidate.length !== nameQuery.length || vowelClass(candidate) !== signature) continue;
-    const changes = [...nameQuery].reduce((count, letter, index) => count + Number(letter !== candidate[index]), 0);
-    // A closer source label makes a three-change guess ambiguous; normal search owns it.
-    if (changes < 3) return null;
-    if (changes !== 3) continue;
-    if (corrected && corrected !== candidate) return null;
-    corrected = candidate;
-  }
-  return corrected;
+  // Normal Typesense typo passes own one- and two-change searches.
+  if (uniqueSourceVowelName(nameQuery, products, 1, 2).matched) return null;
+  return uniqueSourceVowelName(nameQuery, products, 3, 3).candidate;
+}
+
+/** Provider fallback only: recover a unique source brand when Typesense is unavailable. */
+export function resolveSourceVowelFallback(nameQuery: string, products: readonly Product[]): string | null {
+  if ((nameQuery.match(/[бвгджзйклмнпрстфхцчшщ]/gu)?.length ?? 0) < 4) return null;
+  return uniqueSourceVowelName(nameQuery, products, 1, 3).candidate;
 }
 
 export function createProductSearchDocument(product: Product): ProductSearchDocument {
