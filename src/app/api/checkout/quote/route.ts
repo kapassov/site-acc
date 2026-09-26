@@ -4,6 +4,7 @@ import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/checkoutItems";
 import { storefrontCheckoutSource } from "@/lib/catalog-provider";
+import { checkoutHasPrescription, prescriptionCheckoutAllowed } from "@/lib/checkout/prescription-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,9 @@ export async function POST(request: Request) {
   const fulfillment = body.fulfillment === "pickup" ? "pickup" : "pharmacy";
   const paymentMethod = body.paymentMethod === "cash" ? "cash" : "card";
   try {
+    if (!prescriptionCheckoutAllowed(await checkoutHasPrescription(items), fulfillment, paymentMethod)) {
+      return NextResponse.json({ error: "prescription_pickup_cash_only" }, { status: 409, headers: NO_STORE });
+    }
     const quote = await createCheckoutQuote({
       items: items as QuoteItem[],
       fulfillment,

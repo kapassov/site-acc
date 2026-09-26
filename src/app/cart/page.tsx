@@ -23,7 +23,14 @@ export default function CartPage() {
   const { lang, t } = useLang();
   const copy = cartExtraCopy[lang];
   const router = useRouter();
-  const [fulfillment, setFulfillment] = useState<CartFulfillment | null>(null);
+  const [selectedFulfillment, setFulfillment] = useState<CartFulfillment | null>(null);
+  const hasPrescription = items.some((item) => item.product.prescription);
+  const fulfillment = hasPrescription ? "pickup" : selectedFulfillment;
+  const prescriptionNotice = {
+    ru: "Рецептурные товары оформляются только самовывозом с оплатой наличными. При получении понадобится действующий рецепт.",
+    kz: "Рецептімен берілетін тауарларды тек дәріханадан алып кетіп, қолма-қол төлеуге болады. Алғанда жарамды рецепт қажет.",
+    en: "Prescription items are available only for pharmacy pickup with cash payment. Bring a valid prescription.",
+  }[lang];
   const [checkoutIntent, setCheckoutIntent] = useState(false);
   const [cartAlert, setCartAlert] = useState<CartAlertKey | null>(null);
   const fulfillmentRef = useRef<HTMLElement>(null);
@@ -87,6 +94,7 @@ export default function CartPage() {
       <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight text-slate-900 md:mt-0 md:text-3xl">{t("cart.title")}</h1>
 
       {migrationNotice}
+      {hasPrescription && <p role="note" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{prescriptionNotice}</p>}
 
       {cartAlert && (
         <div role="alert" className="mt-4 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
@@ -107,7 +115,7 @@ export default function CartPage() {
             text={copy.fulfillment.pickup.description}
             price={copy.fulfillment.pickup.cardPrice}
           />
-          <FulfillmentCard
+          {!hasPrescription && <FulfillmentCard
             active={fulfillment === "courier"}
             invalid={cartAlert === "fulfillment"}
             onClick={() => { setFulfillment("courier"); setCartAlert(null); }}
@@ -115,7 +123,7 @@ export default function CartPage() {
             title={copy.fulfillment.courier.title}
             text={copy.fulfillment.courier.description}
             price={copy.fulfillment.courier.cardPrice}
-          />
+          />}
         </div>
       </section>
 

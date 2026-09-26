@@ -45,7 +45,7 @@ test("public availability route intersects live Daribar stock with own Medusa pr
   assert.match(source, /medusa_last_known_price\+daribar_v3_stock/);
   assert.match(source, /if \(servesDaribarCatalog\(\)\)/);
   assert.match(source, /daribarSkuFromProductId\(id\)/);
-  assert.match(source, /daribarProductAvailabilityRows\(live, mapped, sku\)/);
+  assert.match(source, /daribarProductAvailabilityRows\(live, mapped, sku, prescriptionFlags\.get\(sku\)\)/);
   assert.match(source, /source: "daribar_v3_price_and_stock"/);
   assert.match(source, /"no-store"/);
   assert.doesNotMatch(source, /DARIBAR_(?:TOKEN|SERVICE_TOKEN)|authorization/i);
@@ -71,6 +71,20 @@ test("native Daribar availability keeps only exact, priced stock at mapped pharm
     sourceCode: "sloc_A1", name: "АСС", city: "Алматы", address: "Абая 34",
     lat: undefined, lon: undefined, hours: undefined, quantity: 4, price: 1250,
   }]);
+});
+
+test("prescription availability exposes only pharmacies with on-site payment", () => {
+  const mapped = new Map([
+    ["cash", { id: "sloc_CASH", sourceCode: "cash", name: "Cash", city: "Алматы", address: "A" }],
+    ["card", { id: "sloc_CARD", sourceCode: "card", name: "Card", city: "Алматы", address: "B" }],
+  ]);
+  const exact = [{ sku: "RX-1", quantity: 2, price: 1500, analogs: [] }];
+  const live = [
+    { sourceCode: "cash", paymentOnSite: true, paymentByCard: false, products: exact },
+    { sourceCode: "card", paymentOnSite: false, paymentByCard: true, products: exact },
+  ];
+  assert.deepEqual(daribarProductAvailabilityRows(live, mapped, "RX-1", true).map((row) => row.sourceCode), ["sloc_CASH"]);
+  assert.equal(daribarProductAvailabilityRows(live, mapped, "RX-1", false).length, 2);
 });
 
 test("product page renders responsive pharmacy stock states and exact quantities", async () => {

@@ -115,8 +115,16 @@ export default function CheckoutPage() {
   const { sendEvent } = usePush();
   const isDemo = user?.demo === true;
 
-  const [delivery, setDelivery] = useState<"courier" | "pickup" | "post">("courier");
-  const [payment, setPayment] = useState<"card" | "cash">("card");
+  const hasPrescription = selectedItems.some((item) => item.product.prescription);
+  const prescriptionNotice = {
+    ru: "В корзине есть рецептурный препарат. Доступен только самовывоз с оплатой наличными в аптеке. При получении предъявите действующий рецепт.",
+    kz: "Себетте рецептімен берілетін дәрі бар. Тек дәріханадан алып кету және қолма-қол төлеу қолжетімді. Алғанда жарамды рецептті көрсетіңіз.",
+    en: "Your basket contains a prescription medicine. Only pharmacy pickup and cash payment are available. Bring a valid prescription when collecting it.",
+  }[lang];
+  const [selectedDelivery, setDelivery] = useState<"courier" | "pickup" | "post">("courier");
+  const [selectedPayment, setPayment] = useState<"card" | "cash">("card");
+  const delivery = hasPrescription ? "pickup" : selectedDelivery;
+  const payment = hasPrescription ? "cash" : selectedPayment;
   const effectivePaymentMethod = isDemo ? "cash" : payment;
   const [pharmacy, setPharmacy] = useState<PickupPoint | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
@@ -386,6 +394,8 @@ export default function CheckoutPage() {
         ? copy.quoteError.staleCart
       : quoteIssue === "cart_item_unavailable" || quoteIssue === "quote_stock_or_price_changed"
         ? copy.quoteError.itemUnavailable
+      : quoteIssue === "prescription_pickup_cash_only"
+        ? copy.quoteError.prescriptionPickupCash
       : quoteIssue === "stale_source_snapshot" || quoteIssue === "validated_snapshot_unavailable"
         ? copy.quoteError.staleSource
       : quoteIssue === "quote_snapshot_changed" || quoteIssue === "quote_items_mismatch" || quoteIssue === "quote_city_mismatch"
@@ -600,6 +610,10 @@ export default function CheckoutPage() {
       } else if (error instanceof Error && error.message === "daribar_order_rejected") {
         setFormError("orderRejected");
         push(copy.formError.orderRejected);
+      } else if (error instanceof Error && error.message === "prescription_pickup_cash_only") {
+        setQuote(null);
+        setQuoteRefresh((value) => value + 1);
+        push(copy.quoteError.prescriptionPickupCash);
       } else if (error instanceof Error && ["daribar_auth_required", "verified_customer_required"].includes(error.message)) {
         setFormError("authRequired");
         push(copy.formError.authRequired);
@@ -659,6 +673,7 @@ export default function CheckoutPage() {
 
       <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_350px] lg:items-start">
         <div className="min-w-0 space-y-5">
+          {hasPrescription && <p role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{prescriptionNotice}</p>}
           <div className="lg:hidden">
             <Section title={t("co.s1")}>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -690,7 +705,7 @@ export default function CheckoutPage() {
 
           <Section title={t("co.s2")} desktopTitle={copy.section.delivery}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <RadioCard active={delivery === "courier"} onClick={() => { cancelNearestPickup(); setDelivery("courier"); clearFieldError("pharmacy"); }} icon={<Truck className="h-5 w-5" />} title={t("co.courier")} text={t("co.courier.s")} />
+              {!hasPrescription && <RadioCard active={delivery === "courier"} onClick={() => { cancelNearestPickup(); setDelivery("courier"); clearFieldError("pharmacy"); }} icon={<Truck className="h-5 w-5" />} title={t("co.courier")} text={t("co.courier.s")} />}
               <RadioCard active={delivery === "pickup"} onClick={() => { cancelNearestPickup(); setDelivery("pickup"); clearFieldError("address"); }} icon={<Store className="h-5 w-5" />} title={t("co.pickup")} text={t("co.pickup.s")} />
             </div>
             <div className={cn("mt-3 space-y-2", delivery === "courier" && "rounded-2xl border border-slate-200 bg-slate-50/50 p-3 sm:p-4")}>
@@ -842,7 +857,7 @@ export default function CheckoutPage() {
 
           <Section title={t("co.s3")} desktopTitle={copy.section.payment}>
             <div className="grid gap-3 sm:grid-cols-2">
-              {!isDemo && (
+              {!isDemo && !hasPrescription && (
                 <RadioCard active={payment === "card"} onClick={() => setPayment("card")} icon={<CreditCard className="h-5 w-5" />} title={t("co.card")} text={t("co.card.s")} />
               )}
               <RadioCard

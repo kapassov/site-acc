@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Heart, ShoppingCart, Truck, Store, Check, ChevronDown, ClipboardList, MapPin } from "lucide-react";
+import { Heart, ShoppingCart, Truck, Store, Check, ChevronDown, ClipboardList } from "lucide-react";
 import type { Product } from "@/lib/types";
 import type { PriceInfo } from "@/lib/price-info";
 import { ProductImage } from "@/components/ui/ProductImage";
@@ -125,13 +125,13 @@ export function ProductDetail({
 
   useEffect(() => {
     const node = purchaseActionsRef.current;
-    if (!node || !canBuy || product.prescription || !("IntersectionObserver" in window)) return;
+    if (!node || !canBuy || !("IntersectionObserver" in window)) return;
     const observer = new IntersectionObserver(([entry]) => {
       setShowStickyPurchase(!entry.isIntersecting && entry.boundingClientRect.bottom < 0);
     }, { threshold: 0 });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [canBuy, product.prescription]);
+  }, [canBuy]);
 
   const gallerySource = product.images && product.images.length > 0 ? product.images : product.image ? [product.image] : [];
   const gallery = gallerySource.filter((url) => !failedImages.includes(url));
@@ -258,22 +258,18 @@ export function ProductDetail({
           </div>
           {canBuy && <p className="mt-0.5 text-xs font-medium text-brand-700 sm:mt-1.5 sm:text-sm">{t("pdp.cashback")}: +{tenge(Math.round(unitPrice! * 0.05))}</p>}
 
-          {product.prescription ? (
+          {product.prescription && (
             <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <ClipboardList className="mt-0.5 h-6 w-6 shrink-0 text-amber-600" />
               <div className="flex-1">
                 <p className="font-semibold text-amber-900">{t("pdp.rxOnly")}</p>
                 <p className="mt-1 text-sm leading-relaxed text-amber-800">{t("pdp.rxOnlySub")}</p>
-                <Link href="/pharmacies" className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white transition hover:bg-amber-700">
-                  <MapPin className="h-4 w-4" /> {t("pdp.rxFind")}
-                </Link>
               </div>
               <button onClick={() => toggle(product.id)} aria-label={fav ? t("a11y.removeFavorite") : t("a11y.addFavorite")} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-amber-200 bg-white text-slate-500 transition hover:text-accent-500">
                 <Heart className={cn("h-5 w-5", fav && "fill-accent-500 text-accent-500")} />
               </button>
             </div>
-          ) : (
-            <>
+          )}
               {stockPending ? (
                 <div className="mt-4 text-sm font-medium text-slate-500" role="status">{stockPendingText}</div>
               ) : product.priceTBD && prices == null ? (
@@ -310,11 +306,8 @@ export function ProductDetail({
                   <Heart className={cn("h-4 w-4 sm:h-5 sm:w-5", fav && "fill-accent-500 text-accent-500")} />
                 </button>
               </div>
-            </>
-          )}
-
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <InfoCard icon={<Truck className="h-5 w-5" />} title={t("pdp.info.delivery.t")} text={t("pdp.info.delivery.s")} />
+            {!product.prescription && <InfoCard icon={<Truck className="h-5 w-5" />} title={t("pdp.info.delivery.t")} text={t("pdp.info.delivery.s")} />}
             <InfoCard icon={<Store className="h-5 w-5" />} title={t("pdp.info.pickup.t")} text={t("pdp.info.pickup.s")} />
           </div>
           {product.stockStale === true && !product.priceTBD && product.stockSourceDate && (
@@ -443,7 +436,7 @@ export function ProductDetail({
 
       </div>
 
-      {showStickyPurchase && canBuy && !product.prescription && (
+      {showStickyPurchase && canBuy && (
         <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-[55] border-t border-slate-200 bg-white/96 px-3 py-2.5 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] backdrop-blur-xl md:hidden">
           <div className="mx-auto flex max-w-md items-center gap-3">
             <div className="min-w-0 flex-1">

@@ -28,6 +28,7 @@ import { medusaCommerce, StandardNCommerceError, type StandardNOrder } from "@/l
 import { canonicalCityName } from "@/lib/i18n/cities";
 import { kztMinorUnits } from "@/lib/money";
 import { deliveryDetailsComment, normalizeDeliveryDetails } from "@/lib/checkout/delivery-details";
+import { checkoutHasPrescription, prescriptionCheckoutAllowed } from "@/lib/checkout/prescription-policy";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
@@ -118,6 +119,9 @@ export async function POST(req: Request) {
     if (!verifiedQuote) return respond({ error: "quote_invalid_or_expired" }, 409);
     const fulfillment = delivery === "pickup" ? "pickup" : "pharmacy";
     if (verifiedQuote.fulfillment !== fulfillment) return respond({ error: "quote_fulfillment_mismatch" }, 409);
+    if (!prescriptionCheckoutAllowed(await checkoutHasPrescription(items), fulfillment, payment as "cash" | "card")) {
+      return respond({ error: "prescription_pickup_cash_only" }, 409);
+    }
     if (cityKey(city) !== cityKey(verifiedQuote.pharmacy.city)) return respond({ error: "quote_city_mismatch" }, 409);
     const daribarCommerceEnabled = isDaribarEnabled("order");
     if (verifiedQuote.source === "daribar" && !daribarCommerceEnabled) {
@@ -235,7 +239,7 @@ export async function POST(req: Request) {
            quote_expires_at: verifiedQuote.expiresAt, payment,
            payment_status: payment === "card" ? "pending" : "not_required",
            payment_link_status: payment === "card" ? (hasPaymentLink ? "received" : "missing") : "not_required",
-           checkout_state: payment === "card" ? "awaiting_payment" : "booking_delivery",
+           checkout_state: payment === "card" ? "awaiting_payment" : delivery === "pickup" ? "processing" : "booking_delivery",
            delivery_claim_status: delivery === "courier" ? "pending" : "not_required",
           payment_provider: payment === "card" ? "daribar" : undefined,
           city, delivery_address: shipping.address1, phone: profile.phone, email, comment,

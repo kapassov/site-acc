@@ -6,6 +6,7 @@ import { searchAllDaribarProductsV3 } from "@/lib/daribar/product-search-v3";
 import { daribarSkuFromProductId } from "@/lib/daribar/ids";
 import { servesDaribarCatalog } from "@/lib/catalog-provider";
 import { daribarProductAvailabilityRows } from "@/lib/daribar/product-availability";
+import { readDaribarCatalogPrescriptionFlags } from "@/lib/daribar/catalog-db";
 export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -18,7 +19,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (servesDaribarCatalog()) {
       const sku = daribarSkuFromProductId(id);
       if (!sku) return NextResponse.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
-      const mapped = await mappedDaribarPharmacies(city);
+      const [mapped, prescriptionFlags] = await Promise.all([
+        mappedDaribarPharmacies(city), readDaribarCatalogPrescriptionFlags([sku]),
+      ]);
+      if (!prescriptionFlags.has(sku)) return NextResponse.json({ error: "availability_unavailable" }, { status: 503, headers: NO_STORE });
       if (!mapped.size) return NextResponse.json({ error: "availability_unavailable" }, { status: 503, headers: NO_STORE });
       const live = await searchAllDaribarProductsV3({
         city,
@@ -27,7 +31,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         replacements: false,
         enableOnSite: true,
       });
-      const pharmacies = daribarProductAvailabilityRows(live, mapped, sku);
+      const pharmacies = daribarProductAvailabilityRows(live, mapped, sku, prescriptionFlags.get(sku));
       return NextResponse.json({
         city,
         total: pharmacies.length,
@@ -59,6 +63,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const displayPrice = products[0] && !products[0].priceTBD && products[0].price > 0
       ? products[0].price : undefined;
     const pharmacies = live.flatMap((row) => {
+      if (products[0]?.prescription && row.paymentOnSite !== true) return [];
       const local = mapped.get(row.sourceCode);
       const offer = local ? ownOffers.get(local.id) : undefined;
       const exact = row.products.find((product) => product.sku === sku);
@@ -77,6 +82,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         lon: row.lon ?? offer?.lon,
         hours: row.openingHours ?? offer?.hours,
         quantity,
+        ...(row.paymentOnSite !== undefined ? { paymentOnSite: row.paymentOnSite } : {}),
         ...(offer && offer.price > 0 ? { price: offer.price } : displayPrice ? { price: displayPrice } : {}),
       }];
     }).sort((left, right) => (left.price ?? Number.MAX_SAFE_INTEGER) - (right.price ?? Number.MAX_SAFE_INTEGER)

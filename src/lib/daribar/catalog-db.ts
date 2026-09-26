@@ -103,3 +103,20 @@ export async function readDaribarCatalogProductPrice(
   const value = Number(result.rows[0]?.price_amount);
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
+
+/** Prescription status comes from the active, server-owned catalogue, never from cart JSON. */
+export async function readDaribarCatalogPrescriptionFlags(
+  skus: string[],
+  database?: Pick<Pool, "query">,
+): Promise<Map<string, boolean>> {
+  if (!skus.length) return new Map();
+  const db = database || await ordersDatabasePool();
+  const result = await db.query<{ sku: string; prescription: boolean }>(`
+    SELECT product.sku, product.prescription
+    FROM daribar_catalog_state state
+    JOIN daribar_catalog_runs run ON run.id = state.active_run_id AND run.status = 'published'
+    JOIN daribar_catalog_products product ON product.run_id = run.id
+    WHERE state.singleton AND product.sku = ANY($1::text[])
+  `, [skus]);
+  return new Map(result.rows.map((row) => [row.sku, row.prescription === true]));
+}

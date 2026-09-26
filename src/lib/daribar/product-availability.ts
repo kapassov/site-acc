@@ -7,12 +7,13 @@ export function daribarProductAvailabilityRows(
   live: DaribarV3Pharmacy[],
   mapped: Map<string, DeliveryMappedPharmacy>,
   sku: string,
+  cashOnly = false,
 ): PharmacyStock[] {
   return live.flatMap((row) => {
     const local = mapped.get(row.sourceCode);
     const exact = row.products.find((product) => product.sku === sku);
     if (!local || !exact || exact.quantity < 1 || exact.price <= 0 || row.withReserve === false
-        || (row.paymentByCard === false && row.paymentOnSite !== true)) return [];
+        || (cashOnly ? row.paymentOnSite !== true : row.paymentByCard === false && row.paymentOnSite !== true)) return [];
     return [{
       sourceCode: local.id,
       name: row.name || local.name,

@@ -37,6 +37,10 @@ function fixture(options={}) {
     '@/lib/httpBody':bodyReader,'@/lib/checkoutItems':items,'@/lib/money':money,'@/lib/i18n/cities':cities,
     '@/lib/catalog-provider':{storefrontCheckoutSource:()=>options.catalogProvider||'medusa'},
     '@/lib/checkout/delivery-details':deliveryDetails,
+    '@/lib/checkout/prescription-policy':{
+      checkoutHasPrescription:async()=>Boolean(options.hasRx),
+      prescriptionCheckoutAllowed:(hasRx,fulfillment,payment)=>!hasRx||(fulfillment==='pickup'&&payment==='cash'),
+    },
     '@/lib/checkoutQuote':{CheckoutQuoteError,verifyCheckoutQuote:()=> options.invalidQuote?null:signed},
     '@/lib/checkout-stock-recheck':{checkoutStockStillMatches},
     '@/lib/daribar/stock-quote':{DaribarStockQuoteError,requestDaribarStockQuote:async input=>{
@@ -88,6 +92,24 @@ test('card creation returns opaque branded payment session, never Kassa URL',asy
 test('pickup ignores forged address and sends signed pharmacy address',async()=>{
   const f=fixture({quote:{...quote(),fulfillment:'pickup'}}),response=await f.POST(request({delivery:'pickup',address:'FORGED'}));
   assert.equal(response.status,201);assert.equal(f.calls.find(c=>c[0]==='medusa')[2].address.address1,'Источник 1');
+});
+test('prescription checkout creates only a pickup cash order, never courier or card',async()=>{
+  const allowed=fixture({hasRx:true,quote:{...quote(),fulfillment:'pickup'}});
+  const pickup=await allowed.POST(request({delivery:'pickup',payment:'cash'}));
+  assert.equal(pickup.status,201);
+  assert.equal(allowed.calls.filter(call=>call[0]==='medusa').length,1);
+
+  const card=fixture({hasRx:true,quote:{...quote(),fulfillment:'pickup'}});
+  const rejectedCard=await card.POST(request({delivery:'pickup',payment:'card'}));
+  assert.equal(rejectedCard.status,409);
+  assert.equal((await rejectedCard.json()).error,'prescription_pickup_cash_only');
+  assert.ok(!card.calls.some(call=>call[0]==='medusa'));
+
+  const courier=fixture({hasRx:true});
+  const rejectedCourier=await courier.POST(request({delivery:'courier',payment:'cash'}));
+  assert.equal(rejectedCourier.status,409);
+  assert.equal((await rejectedCourier.json()).error,'prescription_pickup_cash_only');
+  assert.ok(!courier.calls.some(call=>call[0]==='medusa'));
 });
 test('Daribar storefront accepts native SKU cart and rejects an old Medusa cart',async()=>{
   const nativeItems=[{productId:daribarProductId('SKU-NATIVE'),variantId:daribarVariantId('SKU-NATIVE'),quantity:2}];

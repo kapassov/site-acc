@@ -68,7 +68,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
   const available = !confirmedOut && (product.priceTBD ? typeof lazyMin === "number" : product.inStock);
   // Catalogue stock is only a display hint. Daribar items get an exact live
   // city/SKU check on click, then the full basket is rechecked at checkout.
-  const canAddToCart = Boolean(product.variantId && !product.prescription && buyPrice && !confirmedOut);
+  const canAddToCart = Boolean(product.variantId && buyPrice && !confirmedOut);
 
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -197,16 +197,16 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
           >
             {cartQty > 0 ? <><Check className="h-4 w-4" />{t("card.added")}</> : checkingStock ? stockCopy.checking : <><ShoppingBag className="h-4 w-4" />{t("pdp.addToCart")}</>}
           </button>
-        ) : available && !product.prescription ? (
+        ) : available ? (
           <Link href={href} className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand-200 bg-brand-50 text-[13px] font-semibold sm:mt-3 sm:rounded-xl sm:text-sm text-brand-800 transition hover:bg-brand-100">
             {t("card.details")} <ArrowRight className="h-4 w-4" />
           </Link>
         ) : (
           <div className={cn(
             "mt-2.5 flex h-11 w-full items-center justify-center rounded-lg text-[13px] font-semibold sm:mt-3 sm:rounded-xl sm:text-sm",
-            product.prescription ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500",
+            "bg-slate-100 text-slate-500",
           )}>
-            {product.prescription ? t("card.rxOnly") : (confirmedOut || lazyMin !== undefined ? t("card.out") : t("card.priceTBD"))}
+            {confirmedOut || lazyMin !== undefined ? t("card.out") : t("card.priceTBD")}
           </div>
         )}
         {stockError && <p role="status" className="mt-1.5 text-xs text-amber-700">{stockCopy[stockError]}</p>}

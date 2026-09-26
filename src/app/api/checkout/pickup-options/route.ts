@@ -4,6 +4,7 @@ import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { DaribarStockQuoteError, requestDaribarStockQuotes } from "@/lib/daribar/stock-quote";
+import { checkoutHasPrescription } from "@/lib/checkout/prescription-policy";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
@@ -31,6 +32,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "stale_cart", pharmacies: [] }, { status: 409, headers: NO_STORE });
   }
   try {
+    if (paymentMethod !== "cash" && await checkoutHasPrescription(items)) {
+      return NextResponse.json({ error: "prescription_pickup_cash_only", pharmacies: [] }, { status: 409, headers: NO_STORE });
+    }
     const quotes = await requestDaribarStockQuotes({ items, city, paymentMethod, limit: 1_000 });
     const pharmacies = quotes.map(({ quote, pharmacy }) => ({
       sourceCode: pharmacy.id,
