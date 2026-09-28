@@ -9,7 +9,9 @@ export function useOrders(): Order[] {
   useEffect(() => {
     let alive = true;
     let controller: AbortController | null = null;
+    let lastRefreshAt = 0;
     const refresh = () => {
+      lastRefreshAt = Date.now();
       controller?.abort();
       controller = new AbortController();
       fetch("/api/customer/orders", { cache: "no-store", signal: controller.signal })
@@ -17,16 +19,18 @@ export function useOrders(): Order[] {
         .then((data) => { if (alive) setOrders(Array.isArray(data?.orders) ? data.orders : []); })
         .catch((error) => { if (error instanceof Error && error.name === "AbortError") return; });
     };
-    const visibleRefresh = () => { if (document.visibilityState === "visible") refresh(); };
+    const visibleRefresh = () => { if (document.visibilityState === "visible" && Date.now() - lastRefreshAt >= 30_000) refresh(); };
     refresh();
-    const timer = window.setInterval(visibleRefresh, 15_000);
-    window.addEventListener("focus", refresh);
+    // The list endpoint refreshes Daribar feed and several payment records;
+    // polling every 15 seconds created competing requests during navigation.
+    const timer = window.setInterval(visibleRefresh, 60_000);
+    window.addEventListener("focus", visibleRefresh);
     document.addEventListener("visibilitychange", visibleRefresh);
     return () => {
       alive = false;
       controller?.abort();
       window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("focus", visibleRefresh);
       document.removeEventListener("visibilitychange", visibleRefresh);
     };
   }, []);

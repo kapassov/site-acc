@@ -1,11 +1,9 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import {
   Activity,
-  ArrowRight,
   Baby,
   Check,
   ChevronDown,
@@ -27,7 +25,6 @@ import {
 } from "lucide-react";
 import type { CatNode, Product } from "@/lib/types";
 import type { CatalogFacets, PrescriptionFilter } from "@/lib/catalog-query";
-import { catalogPromos, type Promo } from "@/lib/data/promos";
 import { ProductCard } from "@/components/product/ProductCard";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { tenge } from "@/lib/format";
@@ -42,7 +39,7 @@ import { catalogCategoryName } from "@/lib/i18n/catalog-categories";
 
 type Sort = "popular" | "price-asc" | "price-desc" | "rating" | "new";
 const sortValues: Sort[] = ["popular", "price-asc", "price-desc"];
-const CATALOG_PAGE_SIZE = 24;
+const CATALOG_PAGE_SIZE = 21;
 const EMPTY_PHARMACY_CODES: string[] = [];
 type CatalogFilterCopy = {
   price: string;
@@ -686,19 +683,7 @@ export function CatalogView({
             </div>
           ) : (
             <div className={cn("grid grid-flow-row-dense grid-cols-2 gap-3 transition-opacity sm:gap-4 md:grid-cols-3", loadingMore && "pointer-events-none opacity-55")} aria-busy={loadingMore}>
-              {filtered.map((p, i) => {
-                // Реклама вперемешку: чаще вертикальные вставки (размером с одну карточку товара), реже — горизонтальные (на 2 колонки).
-                const showPromo = (i + 1) % 5 === 0 && filtered.length - (i + 1) >= 2;
-                const slot = Math.floor(i / 5);
-                const promo = showPromo ? catalogPromos[slot % catalogPromos.length] : null;
-                const tall = slot % 4 !== 0; // 3 из 4 вставок вертикальные, 1 из 4 — горизонтальная
-                return (
-                  <Fragment key={p.id}>
-                    <ProductCard product={p} />
-                    {promo && <PromoCell promo={promo} tall={tall} />}
-                  </Fragment>
-                );
-              })}
+              {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
             </div>
           )}
           {knownTotalCount != null && !(initialLoadError && filtered.length === 0) && !awaitingSearch && totalPages > 1 && (
@@ -888,42 +873,6 @@ function TreeNode({ node, activeHandle, openSet, depth }: { node: CatNode; activ
         </ul>
       )}
     </li>
-  );
-}
-
-/** Рекламный баннер-ячейка в сетке каталога (на 2 колонки), в духе Sephora. */
-function PromoCell({ promo, tall = false }: { promo: Promo; tall?: boolean }) {
-  const { t } = useLang();
-  const translationPrefix = `catalog.promo.${promo.id}`;
-  return (
-    <Link
-      href={promo.href}
-      className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-2xl p-5 text-white",
-        promo.className,
-        // Вертикальная вставка = одна ячейка (растягивается в высоту карточки товара);
-        // горизонтальная — на две колонки.
-        tall ? "" : "col-span-2",
-      )}
-    >
-      <Image
-        src={promo.img}
-        alt=""
-        fill
-        sizes={tall ? "(max-width: 767px) 50vw, 33vw" : "(max-width: 767px) 100vw, 66vw"}
-        className="object-cover transition duration-500 group-hover:scale-105"
-        style={{ objectPosition: promo.position ?? "center" }}
-      />
-      <span className={cn("absolute inset-0 bg-gradient-to-r", promo.overlay ?? "from-slate-950/90 via-slate-950/65 to-slate-950/10")} />
-      <div className="relative z-10">
-        {promo.eyebrow && <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/85">{t(`${translationPrefix}.eyebrow`)}</p>}
-        <h3 className="mt-2 font-display text-2xl font-extrabold leading-tight">{t(`${translationPrefix}.title`)}</h3>
-        {promo.subtitle && <p className="mt-1.5 text-sm text-white/90">{t(`${translationPrefix}.subtitle`)}</p>}
-      </div>
-      <span className="relative z-10 mt-5 inline-flex w-fit items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-900 transition-all group-hover:gap-2.5">
-        {t(`${translationPrefix}.cta`)} <ArrowRight className="h-3.5 w-3.5" />
-      </span>
-    </Link>
   );
 }
 

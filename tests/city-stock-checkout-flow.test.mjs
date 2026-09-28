@@ -34,7 +34,7 @@ test("checkout uses the chosen city and shows the complete eligible pickup list 
   assert.match(route, /requestDaribarStockQuotes\(\{ items, city, paymentMethod, limit: 1_000 \}\)/);
   assert.doesNotMatch(route, /city \|\| "Алматы"/);
   assert.match(map, /mappedPoints\.map/);
-  assert.match(map, /pts\.map/);
+  assert.match(map, /filteredPoints\.map/);
 });
 
 test("fresh full-basket stock permits increased quantity but rejects a changed pharmacy, SKU, price or shortage", () => {

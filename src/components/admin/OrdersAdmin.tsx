@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { ORDER_STATUSES, type Order } from "@/lib/content/defaults";
 
-type AdminOrder = Order & { createdAt?: string };
+type AdminOrder = Order & { createdAt?: string; sourceOrderId?: string; metadata?: {
+  customer_cancel_request?: { status?: string; requestedAt?: string };
+  customer_return_request?: { status?: string; requestedAt?: string };
+} };
 
 function token() {
   try { return sessionStorage.getItem("ass_admin_token") || ""; } catch { return ""; }
@@ -87,6 +90,9 @@ export function OrdersAdmin() {
               <div className="min-w-0 flex-1">
                 <p className="font-display text-sm font-extrabold text-slate-900">Заказ №{order.n}</p>
                 <p className="text-xs text-slate-500">{order.date} · {order.sum.toLocaleString("ru-RU")} ₸ · {order.items} тов.</p>
+                {order.sourceOrderId && <p className="mt-1 break-all text-xs text-slate-500">Daribar ID: {order.sourceOrderId}</p>}
+                {order.metadata?.customer_cancel_request?.status === "pending" && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">Покупатель запросил отмену · {order.metadata.customer_cancel_request.requestedAt || ""}. Проверьте заказ в Daribar и обработайте вручную.</p>}
+                {order.metadata?.customer_return_request?.status === "pending" && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Покупатель запросил возврат · {order.metadata.customer_return_request.requestedAt || ""}. Проверьте оплату в Daribar и обработайте вручную.</p>}
               </div>
               <select value={order.status} disabled={busy === order.id} onChange={(e) => void changeStatus(order, e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium outline-none focus:border-brand-500 disabled:opacity-60">
                 {ORDER_STATUSES.map((status) => <option key={status}>{status}</option>)}

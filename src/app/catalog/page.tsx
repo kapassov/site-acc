@@ -19,7 +19,7 @@ export default async function CatalogPage({
   const rawSearch = await searchParams;
   const q = Array.isArray(rawSearch.q) ? rawSearch.q[0] : rawSearch.q;
   const requestedPage = Array.isArray(rawSearch.page) ? rawSearch.page[0] : rawSearch.page;
-  const params = new URLSearchParams({ limit: "24", facets: "0" });
+  const params = new URLSearchParams({ limit: "21", facets: "0" });
   if (requestedPage && /^\d{1,6}$/.test(requestedPage)) params.set("page", requestedPage);
   if (q) params.set("q", q);
   const initialQuery = parseCatalogQuery(params);

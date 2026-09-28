@@ -25,7 +25,7 @@ export default async function CategoryPage({ params, searchParams }: { params: P
   if (canonicalSlug !== slug) redirect(`/catalog/${canonicalSlug}`);
   const categoryName = await getCategoryName(canonicalSlug);
   if (!categoryName) notFound();
-  const queryParams = new URLSearchParams({ category: canonicalSlug, limit: "24", facets: "0" });
+  const queryParams = new URLSearchParams({ category: canonicalSlug, limit: "21", facets: "0" });
   if (requestedPage && /^\d{1,6}$/.test(requestedPage)) queryParams.set("page", requestedPage);
   const initialQuery = parseCatalogQuery(queryParams);
   const [catalogPage, tree] = await Promise.all([

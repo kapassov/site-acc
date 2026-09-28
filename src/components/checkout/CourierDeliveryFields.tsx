@@ -20,12 +20,14 @@ type Props = {
   onAddressFocus: () => void;
   onAddressBlur: () => void;
   onAddressSuggestion: (value: string) => void;
+  onMapOpen: () => void;
+  mapButtonLabel: string;
   onDetailsChange: (key: keyof DeliveryDetails, value: string | boolean) => void;
 };
 
 export function CourierDeliveryFields({
   copy, address, addressError, addressReady, addressFocused, addressSuggestions, details,
-  addressRef, onAddressChange, onAddressFocus, onAddressBlur, onAddressSuggestion, onDetailsChange,
+  addressRef, onAddressChange, onAddressFocus, onAddressBlur, onAddressSuggestion, onMapOpen, mapButtonLabel, onDetailsChange,
 }: Props) {
   const detailCopy = copy.deliveryDetails;
   return (
@@ -68,6 +70,7 @@ export function CourierDeliveryFields({
           )}
         </div>
         {addressError && <p id="checkout-address-error" role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5 shrink-0" />{addressError}</p>}
+        <button type="button" onClick={onMapOpen} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-100"><MapPin className="h-4 w-4" />{mapButtonLabel}</button>
       </div>
 
       <fieldset className="mt-4">

@@ -5,6 +5,7 @@ import { getDaribarCustomerOrderPayment, type DaribarOrderPaymentSnapshot } from
 import { getDaribarCustomerOrder, type DaribarOrderSnapshot } from "@/lib/daribar/order-status";
 import { medusaMediaUrl } from "@/lib/media-url";
 import { customerOrderSummary, providerMetadataPatch } from "@/lib/orders/customer-view";
+import { availableServiceActions, storedServiceRequest } from "@/lib/orders/service-request";
 import { getCustomerOrder, ordersDatabasePool, updateStoredOrderMetadata, type StoredOrder } from "@/lib/orders/store";
 
 export const dynamic = "force-dynamic";
@@ -108,7 +109,15 @@ async function orderDetail(
       chargedTotal: payment?.chargedTotal ?? null,
     },
     providerStatus: snapshot?.rawStatus || snapshot?.status || cleanText(metadata.provider_status, 100),
+    statusUpdatedAt: snapshot ? new Date().toISOString() : cleanText(metadata.provider_synced_at, 100),
     providerAvailable: Boolean(snapshot) || paymentAvailable,
+    providerOrderAvailable: Boolean(snapshot),
+    actions: availableServiceActions(order, snapshot, payment),
+    requests: {
+      cancel: storedServiceRequest(order, "cancel"),
+      return: storedServiceRequest(order, "return"),
+    },
+    progressStep: customerOrderSummary(order, snapshot, payment).progressStep,
     items: lines.map((line, index) => {
       const product = catalog.get(line.productId);
       const provider = snapshot?.items[index];

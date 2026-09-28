@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { AlertCircle, ArrowLeft, Truck, Store, CreditCard, Wallet, CheckCircle2, MapPin, LocateFixed, LoaderCircle, Sparkles } from "lucide-react";
 import { useCart } from "@/lib/cart/CartContext";
 import { useContent } from "@/lib/content/ContentContext";
@@ -16,7 +17,6 @@ import { tenge } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { formatPhone } from "@/lib/phone";
 import { isMedusaPickupPoint, type PickupPoint } from "@/lib/checkout/pickup-points";
-import { PharmacyMapPicker } from "@/components/checkout/PharmacyMapPicker";
 import { usePush } from "@/components/push/PushProvider";
 import { LocalQrCode } from "@/components/checkout/LocalQrCode";
 import { trackEvent } from "@/lib/analytics/client";
@@ -25,6 +25,9 @@ import { GeolocationFailure, requestDeviceLocation } from "@/lib/checkout/pickup
 import { loadNearestPickup, PickupLookupFailure } from "@/lib/checkout/nearest-pickup";
 import { EMPTY_DELIVERY_DETAILS, type DeliveryDetails } from "@/lib/checkout/delivery-details";
 import { CourierDeliveryFields } from "@/components/checkout/CourierDeliveryFields";
+
+const PharmacyMapPicker = dynamic(() => import("@/components/checkout/PharmacyMapPicker").then((module) => module.PharmacyMapPicker), { ssr: false });
+const DeliveryAddressMapPicker = dynamic(() => import("@/components/checkout/DeliveryAddressMapPicker").then((module) => module.DeliveryAddressMapPicker), { ssr: false });
 
 const inputCls =
   "h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 sm:text-sm";
@@ -129,6 +132,7 @@ export default function CheckoutPage() {
   const effectivePaymentMethod = isDemo ? "cash" : payment;
   const [pharmacy, setPharmacy] = useState<PickupPoint | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [addressMapOpen, setAddressMapOpen] = useState(false);
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
@@ -772,17 +776,18 @@ export default function CheckoutPage() {
                   {courierMode === "pharmacy" && (
                     <div ref={pharmacyRef} className="space-y-2 scroll-mt-24">
                       <Field id="checkout-courier-pharmacy" label={copy.deliveryChoice.pharmacyLabel} required error={localizedFieldError("pharmacy")}>
-                        <select id="checkout-courier-pharmacy" value={selectedPharmacy?.sourceCode || ""}
-                          onChange={(event) => { setPharmacy(cityPharmacies.find((point) => point.sourceCode === event.target.value) || null); clearFieldError("pharmacy"); }}
+                        <button id="checkout-courier-pharmacy" type="button" onClick={() => setMapOpen(true)}
                           disabled={pickupOptionsLoading || pickupOptionsError || cityPharmacies.length === 0}
-                          aria-invalid={Boolean(fieldErrors.pharmacy)}
+                          aria-haspopup="dialog"
                           aria-describedby={fieldErrors.pharmacy ? "checkout-courier-pharmacy-error" : undefined}
-                          className={cn(inputCls, fieldErrors.pharmacy && "border-rose-400 bg-rose-50/40")}>
-                          <option value="">{copy.deliveryChoice.pharmacyPlaceholder}</option>
-                          {cityPharmacies.map((point) => (
-                            <option key={point.sourceCode} value={point.sourceCode}>{point.address} · {tenge(point.total)}</option>
-                          ))}
-                        </select>
+                          className={cn("flex min-h-16 w-full items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-60", selectedPharmacy ? "border-brand-500 bg-brand-50/50" : "border-slate-200 hover:border-brand-300", fieldErrors.pharmacy && "border-rose-400 bg-rose-50/40")}>
+                          <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", selectedPharmacy ? "bg-brand-600 text-white" : "bg-brand-50 text-brand-700")}><Store className="h-5 w-5" aria-hidden /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-slate-900">{selectedPharmacy?.address || copy.deliveryChoice.pharmacyPlaceholder}</span>
+                            {selectedPharmacy && <span className="mt-0.5 block text-xs text-slate-600">{selectedPharmacy.hours} · {tenge(selectedPharmacy.total)}</span>}
+                          </span>
+                          <MapPin className="h-5 w-5 shrink-0 text-brand-700" aria-hidden />
+                        </button>
                       </Field>
                       {pickupOptionsLoading && <p role="status" className="text-xs text-slate-600">{copy.deliveryChoice.pharmacyLoading}</p>}
                       {pickupOptionsError && <button type="button" onClick={() => { setLivePharmacies(null); setPickupOptionsError(false); }}
@@ -907,6 +912,8 @@ export default function CheckoutPage() {
                     onAddressFocus={() => setAddrFocus(true)}
                     onAddressBlur={() => window.setTimeout(() => setAddrFocus(false), 150)}
                     onAddressSuggestion={(value) => { setAddr(value + ", "); setAddrFocus(false); }}
+                    onMapOpen={() => setAddressMapOpen(true)}
+                    mapButtonLabel={{ ru: "Выбрать на карте", kz: "Картадан таңдау", en: "Choose on map" }[lang]}
                     onDetailsChange={setDeliveryDetail}
                   />
                   <CourierPriceChoice
@@ -926,14 +933,22 @@ export default function CheckoutPage() {
             </div>
           </Section>
 
-          <PharmacyMapPicker
+          {addressMapOpen && <DeliveryAddressMapPicker
+            city={city}
+            address={addr}
+            onClose={() => setAddressMapOpen(false)}
+            onPick={(value) => { setAddr(value); setAddrFocus(false); clearFieldError("address"); setQuote(null); }}
+          />}
+
+          {mapOpen && <PharmacyMapPicker
             open={mapOpen}
             city={city}
             points={cityPharmacies}
             initialIndex={pharmIdx}
+            mode={delivery === "courier" && courierMode === "pharmacy" ? "courier" : "pickup"}
             onClose={() => setMapOpen(false)}
-            onPick={(point) => { cancelNearestPickup(); setPharmacy(point); clearFieldError("pharmacy"); }}
-          />
+            onPick={(point) => { cancelNearestPickup(); setPharmacy(point); setQuote(null); setQuoteError(""); clearFieldError("pharmacy"); }}
+          />}
 
           <Section title={t("co.s3")} desktopTitle={copy.section.payment}>
             <div className="grid gap-3 sm:grid-cols-2">

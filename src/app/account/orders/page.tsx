@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Package, Check, Truck, Home, RefreshCw } from "lucide-react";
+import { Package, Check, Truck, Home, RefreshCw, ArrowRight } from "lucide-react";
 import { orderStatusMeta, type OrderStatus } from "@/lib/data/account";
 import { useOrders } from "@/lib/orders/useOrders";
 import { useToast } from "@/lib/ui/ToastContext";
@@ -101,7 +101,7 @@ export default function OrdersPage() {
                 <div className="flex items-center gap-3">
                   <span className="grid h-11 w-11 place-items-center rounded-xl bg-slate-50 text-slate-500"><Package className="h-5 w-5" /></span>
                   <div>
-                    <p className="break-all font-semibold text-slate-900">{o.sourceSystem === "daribar" && o.providerOrderId ? o.providerOrderId : o.id}</p>
+                    <Link href={`/account/orders/${encodeURIComponent(o.detailId)}`} className="break-all font-semibold text-slate-900 underline-offset-2 hover:text-brand-700 hover:underline">{o.sourceSystem === "daribar" && o.providerOrderId ? o.providerOrderId : o.id}</Link>
                     {o.sourceSystem === "daribar" && o.providerOrderId && <p className="text-xs text-slate-400">{o.id}</p>}
                     <p className="text-sm text-slate-500">{o.date} · {o.itemsCount} {plural(o.itemsCount)}</p>
                   </div>
@@ -144,7 +144,7 @@ export default function OrdersPage() {
                 <button onClick={() => void repeatOrder(o.detailId)} disabled={reordering !== null} className="h-9 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition hover:border-brand-300 disabled:cursor-wait disabled:opacity-50">
                   <span className="inline-flex items-center gap-1.5"><RefreshCw className="h-4 w-4" /> {t("acc.ord.repeat")}</span>
                 </button>
-                <Link href={`/account/orders/${encodeURIComponent(o.detailId)}`} className="inline-flex h-9 items-center rounded-lg px-4 text-sm font-medium text-slate-500 transition hover:bg-slate-50">{t("acc.ord.details")}</Link>
+                <Link href={`/account/orders/${encodeURIComponent(o.detailId)}`} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-50 px-4 text-sm font-semibold text-brand-700 transition hover:bg-brand-100">{t("acc.ord.details")}<ArrowRight className="h-4 w-4" /></Link>
               </div>
             </div>
           ))}

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Store, Truck } from "lucide-react";
 import { CourierDeliveryFields } from "@/components/checkout/CourierDeliveryFields";
+import { PharmacyMapPicker } from "@/components/checkout/PharmacyMapPicker";
+import { DeliveryAddressMapPicker } from "@/components/checkout/DeliveryAddressMapPicker";
 import { cn } from "@/lib/cn";
 import { checkoutExtra } from "@/lib/i18n/checkout-extra";
 import { EMPTY_DELIVERY_DETAILS, type DeliveryDetails } from "@/lib/checkout/delivery-details";
@@ -11,6 +13,14 @@ export function CheckoutDeliveryPreview() {
   const copy = checkoutExtra.ru;
   const [address, setAddress] = useState("пр. Сейфуллина, 51/12");
   const [details, setDetails] = useState<DeliveryDetails>({ ...EMPTY_DELIVERY_DETAILS, unit: "12", entrance: "2", floor: "5", leaveAtDoor: true });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [addressMapOpen, setAddressMapOpen] = useState(false);
+  const [selectedPharmacy, setSelectedPharmacy] = useState(0);
+  const samplePharmacies = [
+    { sourceCode: "sloc_preview_1", address: "пр. Гагарина, 181а", city: "Алматы", hours: "08:00–22:00", lat: 43.224, lon: 76.899, total: 2670 },
+    { sourceCode: "sloc_preview_2", address: "ул. Мамыр, Керуентау 2/1", city: "Алматы", hours: "08:00–22:00", lat: 43.211, lon: 76.878, total: 2845 },
+    { sourceCode: "sloc_preview_3", address: "ул. Чайковского, 22а", city: "Алматы", hours: "08:00–22:00", lat: 43.268, lon: 76.936, total: 2900 },
+  ];
   const setDetail = (key: keyof DeliveryDetails, value: string | boolean) => setDetails((current) => ({ ...current, [key]: value } as DeliveryDetails));
 
   return (
@@ -23,6 +33,10 @@ export function CheckoutDeliveryPreview() {
         </div>
         <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/50 p-3 sm:p-4">
           <h2 className="font-display text-base font-bold text-slate-900">{copy.deliveryDetails.title}</h2>
+          <button type="button" onClick={() => setPickerOpen(true)} className="mt-3 min-h-12 w-full rounded-xl border border-brand-300 bg-white px-4 text-left text-sm font-semibold text-brand-800 hover:bg-brand-50">
+            {samplePharmacies[selectedPharmacy].address} · {copy.deliveryChoice.pharmacyLabel}
+          </button>
+          <PharmacyMapPicker open={pickerOpen} initialIndex={selectedPharmacy} city="Алматы" points={samplePharmacies} mode="courier" onClose={() => setPickerOpen(false)} onPick={(_, index) => setSelectedPharmacy(index)} />
           <div className="mt-3">
           <label htmlFor="preview-city" className="mb-1.5 block text-sm font-semibold text-slate-700">Город <span className="text-rose-500">*</span></label>
           <input id="preview-city" value="Алматы" readOnly className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-800 outline-none sm:text-sm" />
@@ -38,8 +52,11 @@ export function CheckoutDeliveryPreview() {
             onAddressFocus={() => {}}
             onAddressBlur={() => {}}
             onAddressSuggestion={() => {}}
+            onMapOpen={() => setAddressMapOpen(true)}
+            mapButtonLabel="Выбрать на карте"
             onDetailsChange={setDetail}
           />
+          {addressMapOpen && <DeliveryAddressMapPicker city="Алматы" address={address} onClose={() => setAddressMapOpen(false)} onPick={setAddress} />}
         </div>
       </section>
     </main>

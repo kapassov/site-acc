@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import type { Product, Category, Brand } from "@/lib/types";
 
 type Data = { products: Product[]; categories: Category[]; brands: Brand[]; ready: boolean };
@@ -31,12 +32,28 @@ function categoriesFromTree(value: unknown): Category[] {
  */
 export function CatalogDataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Data>({ products: [], categories: [], brands: [], ready: false });
+  const lastProductLoadAt = useRef(0);
+  const pathname = usePathname();
+  const needsProductBootstrap = pathname === "/" || pathname.startsWith("/promotions")
+    || pathname.startsWith("/favorites") || pathname.startsWith("/ai");
 
   useEffect(() => {
+    if (pathname !== "/") return;
+    const controller = new AbortController();
+    fetch("/api/category-tree", { cache: "default", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : [])
+      .then((tree) => setData((previous) => ({ ...previous, categories: categoriesFromTree(tree) })))
+      .catch(() => { /* Navigation still works with the fallback menu. */ });
+    return () => controller.abort();
+  }, [pathname]);
+
+  useEffect(() => {
+    // Account, checkout, PDP and catalogue routes fetch their own scoped data.
+    // Avoid the global product bootstrap competing with their primary requests.
+    if (!needsProductBootstrap) return;
     let alive = true;
     let running = false;
     let failures = 0;
-    let lastLoadedAt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let activeController: AbortController | null = null;
 
@@ -52,27 +69,23 @@ export function CatalogDataProvider({ children }: { children: ReactNode }) {
       activeController = new AbortController();
       const timeout = setTimeout(() => activeController?.abort(), 15_000);
       try {
-        const [response, treeResponse] = await Promise.all([
-          fetch("/api/catalog?limit=24&offset=0&facets=0", { cache: "default", signal: activeController.signal }),
-          fetch("/api/category-tree", { cache: "default", signal: activeController.signal }),
-        ]);
+        const response = await fetch("/api/catalog?limit=24&offset=0&facets=0", { cache: "default", signal: activeController.signal });
         if (!response.ok) throw new Error(`catalog_${response.status}`);
         const payload = await response.json();
-        const tree = treeResponse.ok ? await treeResponse.json() : [];
         if (!Array.isArray(payload?.products) || payload.products.length === 0) throw new Error("empty_catalog");
         if (!alive) return;
         failures = 0;
-        lastLoadedAt = Date.now();
-        setData({
+        lastProductLoadAt.current = Date.now();
+        setData((previous) => ({
+          ...previous,
           products: payload.products,
-          categories: categoriesFromTree(tree),
           brands: payload.products.flatMap((product: Partial<Product>) => (
             typeof product.brand === "string" && !["", "-", "—"].includes(product.brand.trim())
               ? [{ id: product.brand, slug: product.brand.toLocaleLowerCase("ru").replace(/[^a-zа-я0-9]+/gi, "-").replace(/^-+|-+$/g, ""), name: product.brand, tagline: "", hue: 150 }]
               : []
           )).filter((brand: Brand, index: number, list: Brand[]) => list.findIndex((candidate) => candidate.slug === brand.slug) === index).slice(0, 6),
           ready: true,
-        });
+        }));
         schedule(REFRESH_MS);
       } catch {
         if (!alive) return;
@@ -88,14 +101,14 @@ export function CatalogDataProvider({ children }: { children: ReactNode }) {
 
     const reconnect = () => schedule(0);
     const refreshVisible = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastLoadedAt >= REFRESH_MS) reconnect();
+      if (document.visibilityState === "visible" && Date.now() - lastProductLoadAt.current >= REFRESH_MS) reconnect();
     };
 
     // The full catalogue is useful for search/favourites, but downloading it
     // during hydration competes with the hero and PDP images. Start shortly
     // after the first paint; cached category navigation remains independent.
-    const initialDelay = window.location.pathname.startsWith("/product/") ? 2_000 : 700;
-    schedule(initialDelay);
+    const elapsed = Date.now() - lastProductLoadAt.current;
+    schedule(lastProductLoadAt.current && elapsed < REFRESH_MS ? REFRESH_MS - elapsed : 700);
     window.addEventListener("online", reconnect);
     document.addEventListener("visibilitychange", refreshVisible);
     return () => {
@@ -105,7 +118,7 @@ export function CatalogDataProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", reconnect);
       document.removeEventListener("visibilitychange", refreshVisible);
     };
-  }, []);
+  }, [needsProductBootstrap]);
 
   return <Ctx.Provider value={data}>{children}</Ctx.Provider>;
 }
