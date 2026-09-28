@@ -57,7 +57,8 @@ test("two-level directory is the final homepage block and has responsive accessi
     readFile(new URL("../src/components/home/CatalogDirectory.tsx", import.meta.url), "utf8"),
   ]);
 
-  assert.ok(page.indexOf("<CatalogDirectory tree={categoryTree} />") > page.indexOf("<LoyaltyBanner />"));
+  assert.ok(page.indexOf("<Suspense fallback={<SectionPlaceholder height=\"min-h-40\" />}><CatalogTree /></Suspense>") > page.indexOf("<LoyaltyBanner />"));
+  assert.match(page, /<CatalogDirectory tree=\{await getCatTree\(\)\.catch\(\(\) => \[\]\)\} \/>/);
   assert.match(page, /getCatTree\(\)\.catch\(\(\) => \[\]\)/);
   assert.match(component, /medusaDirectory\(tree\)/);
   assert.doesNotMatch(component, /CATALOG_DIRECTORY|catalog-navigation/);
