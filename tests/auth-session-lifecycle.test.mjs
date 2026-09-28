@@ -37,6 +37,8 @@ function harness() {
   });
   const context = vm.createContext({
     exports: {}, AbortController,
+    Event: class Event { constructor(type) { this.type = type; } },
+    window: { dispatchEvent: () => true },
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     fetch: () => new Promise(() => {}), // unrelated address read is not resolved in these tests
     require: (name) => {

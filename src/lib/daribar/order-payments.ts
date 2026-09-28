@@ -47,6 +47,8 @@ export type DaribarOrderPaymentSnapshot = {
   updatedAt: string;
   numInOrder: number;
   hasPaymentUrl: boolean;
+  /** Customer-facing `amount` can omit delivery; this is the whole-order charge. */
+  chargedTotal?: number;
   refundAmount: number;
   refundStatus?: DaribarPaymentStatus;
 };
@@ -176,6 +178,11 @@ export function summarizeDaribarOrderPayments(payments: DaribarOrderPayment[]): 
   const latestRefund = [...selected.refunds].sort((left, right) => (
     Date.parse(right.updatedAt) - Date.parse(left.updatedAt) || right.id.localeCompare(left.id)
   ))[0];
+  const chargedTotal = selected.type === "order" && selected.amount !== undefined
+    ? selected.itemsAmount !== undefined
+      ? selected.itemsAmount + (selected.deliveryAmount || 0)
+      : selected.amount + (selected.deliveryAmount || 0)
+    : undefined;
   return {
     status: selected.status,
     paid: paidState(selected.status),
@@ -186,6 +193,8 @@ export function summarizeDaribarOrderPayments(payments: DaribarOrderPayment[]): 
     updatedAt: selected.updatedAt,
     numInOrder: selected.numInOrder,
     hasPaymentUrl: selected.hasPaymentUrl,
+    ...(chargedTotal !== undefined && Number.isFinite(chargedTotal) && chargedTotal <= 100_000_000
+      ? { chargedTotal: Number(chargedTotal.toFixed(2)) } : {}),
     refundAmount,
     ...(latestRefund ? { refundStatus: latestRefund.status } : {}),
   };

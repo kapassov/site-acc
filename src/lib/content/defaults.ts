@@ -8,7 +8,7 @@
 export type Banner = { id: string; eyebrow: string; title: string; sub: string; cta: string; href: string; from: string; to: string; img: string; video?: string; on: boolean };
 export type Collection = { id: string; title: string; href: string; from: string; to: string; icon: string; img?: string };
 export type Promo = { id: string; code: string; type: "percent" | "amount" | "free"; value: number; note: string };
-export type Order = { id: string; n: number; date: string; sum: number; status: string; items: number; code?: string; delivery?: string };
+export type Order = { id: string; n: number; date: string; sum: number; status: string; items: number; code?: string; delivery?: string; providerOrderId?: string };
 export type Story = { id: string; label: string; icon: string; href: string; from: string; to: string; img?: string; video?: string; on: boolean };
 // Быстрые ссылки — плитки-навигация рядом с рекламным билбордом на главной (панель 2×2).
 export type QuickLink = { id: string; label: string; href: string; from: string; to: string; icon: string; img?: string; on: boolean };

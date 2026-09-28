@@ -41,6 +41,7 @@ function fixture(options={}) {
       checkoutHasPrescription:async()=>Boolean(options.hasRx),
       prescriptionCheckoutAllowed:(hasRx,fulfillment,payment)=>!hasRx||(fulfillment==='pickup'&&payment==='cash'),
     },
+    '@/lib/checkout/order-hours':{ordersAcceptingNow:()=>options.ordersOpen!==false},
     '@/lib/checkoutQuote':{CheckoutQuoteError,verifyCheckoutQuote:()=> options.invalidQuote?null:signed},
     '@/lib/checkout-stock-recheck':{checkoutStockStillMatches},
     '@/lib/daribar/stock-quote':{DaribarStockQuoteError,requestDaribarStockQuote:async input=>{
@@ -229,6 +230,15 @@ for(const [status,code] of [[502,'medusa_commerce_unavailable'],[503,'commerce_t
 });
 test('payment failure after Medusa creation cannot recreate order automatically',async()=>{const f=fixture({paymentError:true});const r=await f.POST(request({payment:'card'}));assert.equal(r.status,502);assert.equal((await r.json()).orderCreated,true);assert.ok(!f.calls.some(c=>c[0]==='release'));});
 test('durable replay does not contact Medusa a second time',async()=>{const f=fixture({attempt:{outcome:'replay',response:{status:201,payload:{order:{id:'order_A1'}}}}});assert.equal((await f.POST(request())).status,201);assert.ok(!f.calls.some(c=>c[0]==='medusa'));});
+test('closing hours reject new orders without contacting the provider and release the attempt',async()=>{
+  const f=fixture({ordersOpen:false}),response=await f.POST(request());
+  assert.equal(response.status,409);assert.equal((await response.json()).error,'pharmacy_closed');
+  assert.ok(f.calls.some(c=>c[0]==='release'));assert.ok(!f.calls.some(c=>c[0]==='medusa'||c[0]==='daribar-order'));
+});
+test('existing order replay remains available after closing hours',async()=>{
+  const f=fixture({ordersOpen:false,attempt:{outcome:'replay',response:{status:201,payload:{order:{id:'order_A1'}}}}});
+  assert.equal((await f.POST(request())).status,201);assert.ok(!f.calls.some(c=>c[0]==='release'||c[0]==='medusa'));
+});
 test('KZT helper preserves source cents and rejects genuine fractional tiyn',()=>{
   for(const [value,expected] of [[8631.68,863168],[13843.99,1384399],[1068.42,106842],[1430.54,143054],[377.89,37789],[0.1+0.2,30]])assert.equal(money.kztMinorUnits(value),expected);
   for(const value of [0.001,NaN,Infinity,-1,'10.20'])assert.equal(money.kztMinorUnits(value),null);

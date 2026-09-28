@@ -285,10 +285,10 @@ export function ProductDetail({
 
               <div ref={purchaseActionsRef} className="mt-3 flex min-w-0 items-center gap-2 sm:mt-6 sm:gap-3">
                 <span className="shrink-0 sm:hidden">
-                  <QuantityStepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} size="sm" />
+                  <QuantityStepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} max={currentMaximum ?? 99} size="sm" />
                 </span>
                 <span className="hidden shrink-0 sm:inline-flex">
-                  <QuantityStepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} />
+                  <QuantityStepper qty={qty} onChange={(n) => setQty(Math.max(1, n))} max={currentMaximum ?? 99} />
                 </span>
                 <button
                   onClick={addItem}

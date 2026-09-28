@@ -52,6 +52,6 @@ test("city UI localizes labels while retaining canonical values for selection an
   assert.match(checkout, /value=\{city\}/);
   assert.match(checkout, /setCity\(e\.target\.value\)/);
   assert.match(checkout, /cityDisplayName\(choice, lang\)/);
-  assert.match(checkout, /city: preferredPharmacyCity/);
+  assert.match(checkout, /city: selectedPharmacy\.city/);
   assert.match(checkout, /city,\s*\n\s*quoteId:/);
 });

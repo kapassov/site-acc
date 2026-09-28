@@ -8,6 +8,7 @@ import {
   type DeliveryMappedPharmacy,
 } from "./daribar/delivery-mapping.ts";
 import { DaribarAvailabilityError, getDaribarExactPharmacyStock } from "./daribar/availability.ts";
+import { kztMinorUnits } from "./money.ts";
 
 export type CheckoutDeliveryRequest = { mode: DaribarDeliveryMode; city: string; address: string; pharmacyId?: string };
 export type CheckoutDeliveryQuote = {
@@ -38,6 +39,7 @@ async function verifyCurrentDaribarStock(offer: DaribarDeliveryOffer, city: stri
 export async function resolveCheckoutDelivery(
   quote: StandardNQuote,
   request: CheckoutDeliveryRequest,
+  accessToken?: string,
 ): Promise<{ delivery: CheckoutDeliveryQuote; pharmacy: DeliveryMappedPharmacy; alternatives: DaribarDeliveryOffer[] }> {
   if (!request || !["city", "pharmacy"].includes(request.mode)) throw new DaribarDeliveryError(400, "invalid_delivery_mode");
   const city = String(request.city || "").normalize("NFKC").trim().slice(0, 100);
@@ -48,10 +50,10 @@ export async function resolveCheckoutDelivery(
   let offer: DaribarDeliveryOffer, alternatives: DaribarDeliveryOffer[] = [], pharmacy: DeliveryMappedPharmacy;
   if (request.mode === "pharmacy") {
     pharmacy = await mapLocalPharmacyToDaribar(request.pharmacyId || quote.pharmacy.id);
-    offer = await deliveryForPharmacy({ sourceCode: pharmacy.sourceCode, items: mappedItems, destination });
+    offer = await deliveryForPharmacy({ sourceCode: pharmacy.sourceCode, items: mappedItems, destination, accessToken });
   } else {
     const baseline = await mapLocalPharmacyToDaribar(request.pharmacyId || quote.pharmacy.id);
-    const resolved = await bestDeliveryInCity({ city, items: mappedItems, destination, sourceCode: baseline.sourceCode });
+    const resolved = await bestDeliveryInCity({ city, items: mappedItems, destination, sourceCode: baseline.sourceCode, accessToken });
     const mappedOffers: Array<{ offer: DaribarDeliveryOffer; pharmacy: DeliveryMappedPharmacy }> = [];
     for (const candidate of [resolved.best, ...resolved.alternatives]) {
       try {
@@ -67,12 +69,15 @@ export async function resolveCheckoutDelivery(
     alternatives = mappedOffers.slice(1).map(value => value.offer);
   }
   await verifyCurrentDaribarStock(offer, city);
+  if (request.mode === "pharmacy" && kztMinorUnits(offer.itemsPrice) !== kztMinorUnits(quote.subtotal)) {
+    throw new DaribarDeliveryError(409, "delivery_price_mismatch");
+  }
   const best = offer.bestDelivery;
   return {
     pharmacy, alternatives,
     delivery: {
       mode: request.mode, provider: best.provider, deliveryType: best.deliveryType,
-      price: best.price, itemsPrice: quote.subtotal, orderItems: offer.orderItems,
+      price: best.price, itemsPrice: offer.itemsPrice, orderItems: offer.orderItems,
       eta: best.eta, distance: best.distance, daribarSourceCode: offer.pharmacy.code,
       pharmacyId: pharmacy.id, destinationHash: deliveryDestinationHash(city, address),
       quotedAt: new Date().toISOString(),

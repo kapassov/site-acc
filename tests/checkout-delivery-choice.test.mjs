@@ -29,9 +29,12 @@ test("equal-distance pharmacies use price, ETA and stable code as tie-breakers",
   assert.deepEqual(values.map((value) => value.pharmacy.code), ["a", "b", "slow", "z"]);
 });
 
-test("courier checkout automatically requests the nearest city option after address entry", async () => {
+test("courier checkout exposes both city and selected-pharmacy quote modes", async () => {
   const page = await readFile(new URL("../src/app/checkout/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /deliveryRequest:\s*\{[\s\S]*?mode:\s*"city"/);
+  assert.match(page, /setCourierMode/);
+  assert.match(page, /deliveryRequest:\s*\{[\s\S]*?mode:\s*courierMode/);
+  assert.match(page, /courierMode === "pharmacy" \? \{ pharmacyId: selectedPharmacy\?\.sourceCode \}/);
+  assert.match(page, /checkout-courier-pharmacy/);
   assert.doesNotMatch(page, /\/api\/checkout\/courier-anchor|findBetterCityDelivery|applyCityDelivery/);
   assert.doesNotMatch(page, /Найти выгоднее|Find a better option/);
   assert.match(page, /<CourierPriceChoice[\s\S]*?quote=\{quote\}/);

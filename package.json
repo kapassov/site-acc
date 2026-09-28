@@ -22,6 +22,7 @@
     "catalog:sync": "node scripts/sync-medusa-catalog.mjs",
     "catalog:daribar:sync": "node scripts/sync-daribar-catalog.mjs",
     "catalog:daribar:publish": "node scripts/publish-daribar-catalog.mjs",
+    "catalog:daribar:pharmacies": "node scripts/sync-daribar-pharmacies.mjs",
     "catalog:daribar:stack": "node scripts/sync-daribar-stack.mjs",
     "catalog:daribar:rollback": "node scripts/rollback-daribar-catalog.mjs",
     "catalog:shadow": "node scripts/compare-catalogs.mjs",

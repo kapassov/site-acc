@@ -12,18 +12,19 @@ import { useLang } from "@/lib/i18n/LanguageContext";
 
 type Detail = {
   id: string; date: string; status: OrderStatus; total: number; itemsCount: number;
+  providerOrderId?: string; sourceSystem?: string;
   paymentStatus?: string; deliveryStatus?: string; providerStatus?: string; providerAvailable: boolean;
   deliveryMethod: string; pickupCode?: string | null;
   pharmacy: { name?: string; address?: string };
   delivery: { address?: string; provider?: string; eta?: string; status?: string; trackingUrl?: string | null };
-  payment: { method?: string; status?: string; providerMethod?: string | null; authorized?: boolean; paidAt?: string | null; refundAmount?: number; refundStatus?: string | null };
+  payment: { method?: string; status?: string; providerMethod?: string | null; authorized?: boolean; paidAt?: string | null; refundAmount?: number; refundStatus?: string | null; chargedTotal?: number | null };
   items: Array<{ productId: string; title: string; quantity: number; unitPrice: number; total: number; handle?: string | null; image?: string | null }>;
 };
 
 const copy = {
-  ru: { back: "Мои заказы", title: "Детали заказа", loading: "Проверяем актуальный статус…", missing: "Заказ не найден", retry: "Повторить", goods: "Товары", payment: "Оплата", paid: "Оплачено", unpaid: "Ожидает оплаты", authorized: "Деньги зарезервированы", failedPayment: "Оплата не прошла", canceledPayment: "Платёж отменён", refundPending: "Возврат обрабатывается", refunded: "Возврат выполнен", cash: "Наличными в аптеке", card: "Банковской картой", delivery: "Получение", pickup: "Самовывоз", courier: "Курьерская доставка", pharmacy: "Аптека", address: "Адрес доставки", unavailable: "Daribar временно не вернул актуальный статус. Показаны сохранённые данные заказа.", deliveryAttention: "Курьерская заявка требует подтверждения. Заказ не считается переданным курьеру.", tracking: "Отследить доставку", code: "Код получения" },
-  kz: { back: "Менің тапсырыстарым", title: "Тапсырыс мәліметтері", loading: "Өзекті күй тексерілуде…", missing: "Тапсырыс табылмады", retry: "Қайталау", goods: "Тауарлар", payment: "Төлем", paid: "Төленді", unpaid: "Төлем күтілуде", authorized: "Қаражат резервтелді", failedPayment: "Төлем өтпеді", canceledPayment: "Төлем тоқтатылды", refundPending: "Қайтару өңделуде", refunded: "Қаражат қайтарылды", cash: "Дәріханада қолма-қол", card: "Банк картасымен", delivery: "Алу тәсілі", pickup: "Өзі алып кету", courier: "Курьерлік жеткізу", pharmacy: "Дәріхана", address: "Жеткізу мекенжайы", unavailable: "Daribar өзекті күйді уақытша қайтармады. Сақталған деректер көрсетілді.", deliveryAttention: "Курьерлік өтінім растауды қажет етеді. Тапсырыс курьерге берілді деп саналмайды.", tracking: "Жеткізуді қадағалау", code: "Алу коды" },
-  en: { back: "My orders", title: "Order details", loading: "Checking the latest status…", missing: "Order not found", retry: "Retry", goods: "Items", payment: "Payment", paid: "Paid", unpaid: "Awaiting payment", authorized: "Funds authorized", failedPayment: "Payment failed", canceledPayment: "Payment canceled", refundPending: "Refund processing", refunded: "Refund completed", cash: "Cash at pharmacy", card: "Bank card", delivery: "Fulfilment", pickup: "Pickup", courier: "Courier delivery", pharmacy: "Pharmacy", address: "Delivery address", unavailable: "Daribar did not return a live status. Saved order details are shown.", deliveryAttention: "The courier booking needs confirmation. The order is not considered handed to a courier.", tracking: "Track delivery", code: "Pickup code" },
+  ru: { back: "Мои заказы", title: "Детали заказа", loading: "Проверяем актуальный статус…", missing: "Заказ не найден", retry: "Повторить", goods: "Товары", payment: "Оплата", paid: "Оплачено", unpaid: "Ожидает оплаты", payAtPickup: "Оплата при получении", authorized: "Деньги зарезервированы", failedPayment: "Оплата не прошла", canceledPayment: "Платёж отменён", refundPending: "Возврат обрабатывается", refunded: "Возврат выполнен", cash: "Наличными в аптеке", card: "Банковской картой", delivery: "Получение", pickup: "Самовывоз", courier: "Курьерская доставка", pharmacy: "Аптека", address: "Адрес доставки", unavailable: "Daribar временно не вернул актуальный статус. Показаны сохранённые данные заказа.", deliveryAttention: "Курьерская заявка требует подтверждения. Заказ не считается переданным курьеру.", chargedMismatch: "Списанная сумма Daribar отличается от суммы заказа. Не оплачивайте повторно; обратитесь в поддержку с ID заказа.", charged: "Списано", tracking: "Отследить доставку", code: "Код получения" },
+  kz: { back: "Менің тапсырыстарым", title: "Тапсырыс мәліметтері", loading: "Өзекті күй тексерілуде…", missing: "Тапсырыс табылмады", retry: "Қайталау", goods: "Тауарлар", payment: "Төлем", paid: "Төленді", unpaid: "Төлем күтілуде", payAtPickup: "Алғанда төлеу", authorized: "Қаражат резервтелді", failedPayment: "Төлем өтпеді", canceledPayment: "Төлем тоқтатылды", refundPending: "Қайтару өңделуде", refunded: "Қаражат қайтарылды", cash: "Дәріханада қолма-қол", card: "Банк картасымен", delivery: "Алу тәсілі", pickup: "Өзі алып кету", courier: "Курьерлік жеткізу", pharmacy: "Дәріхана", address: "Жеткізу мекенжайы", unavailable: "Daribar өзекті күйді уақытша қайтармады. Сақталған деректер көрсетілді.", deliveryAttention: "Курьерлік өтінім растауды қажет етеді. Тапсырыс курьерге берілді деп саналмайды.", chargedMismatch: "Daribar есептен шығарған сома тапсырыс сомасына сәйкес келмейді. Қайта төлемеңіз; тапсырыс ID-сімен қолдауға жүгініңіз.", charged: "Есептен шығарылды", tracking: "Жеткізуді қадағалау", code: "Алу коды" },
+  en: { back: "My orders", title: "Order details", loading: "Checking the latest status…", missing: "Order not found", retry: "Retry", goods: "Items", payment: "Payment", paid: "Paid", unpaid: "Awaiting payment", payAtPickup: "Pay on collection", authorized: "Funds authorized", failedPayment: "Payment failed", canceledPayment: "Payment canceled", refundPending: "Refund processing", refunded: "Refund completed", cash: "Cash at pharmacy", card: "Bank card", delivery: "Fulfilment", pickup: "Pickup", courier: "Courier delivery", pharmacy: "Pharmacy", address: "Delivery address", unavailable: "Daribar did not return a live status. Saved order details are shown.", deliveryAttention: "The courier booking needs confirmation. The order is not considered handed to a courier.", chargedMismatch: "Daribar charged a different amount from the order total. Do not pay again; contact support with the order ID.", charged: "Charged", tracking: "Track delivery", code: "Pickup code" },
 } as const;
 
 function isPaid(value: string | undefined): boolean {
@@ -87,28 +88,32 @@ export default function OrderDetailPage() {
     </div>
   );
 
-  const paid = isPaid(order.payment.status || order.paymentStatus) || order.payment.method === "cash";
+  const paid = isPaid(order.payment.status || order.paymentStatus);
   const providerPaymentState = paymentTone(order.payment.status || order.paymentStatus, order.payment.authorized, order.payment.refundStatus);
   const paymentState = providerPaymentState === "refunded" || providerPaymentState === "refundPending"
     ? providerPaymentState
     : paid ? "paid" : providerPaymentState;
+  const paymentLabel = order.payment.method === "cash" && paymentState === "unpaid" ? c.payAtPickup : c[paymentState];
   const paymentProblem = paymentState === "failedPayment" || paymentState === "canceledPayment";
+  const chargedMismatch = paid && order.payment.chargedTotal != null
+    && Math.abs(order.payment.chargedTotal - order.total) >= 1;
   const claimFailed = deliveryFailed(order.delivery.status || order.deliveryStatus);
   return (
     <div className="space-y-5">
       <Link href="/account/orders" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-brand-700"><ArrowLeft className="h-4 w-4" />{c.back}</Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="font-display text-2xl font-bold text-slate-900">{c.title}</h1><p className="mt-1 text-sm text-slate-500">{order.id} · {order.date}</p></div>
+        <div><h1 className="font-display text-2xl font-bold text-slate-900">{c.title}</h1><p className="mt-1 break-all text-sm text-slate-500">{order.sourceSystem === "daribar" && order.providerOrderId ? `${order.providerOrderId} · ${order.id}` : order.id} · {order.date}</p></div>
         <span className={cn("rounded-full px-3 py-1 text-sm font-semibold", orderStatusMeta[order.status].className)}>{t(`st.${order.status}`)}</span>
       </div>
 
       {!order.providerAvailable && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{c.unavailable}</div>}
       {claimFailed && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{c.deliveryAttention}</div>}
+      {chargedMismatch && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{c.chargedMismatch} {c.charged}: {tenge(order.payment.chargedTotal!)}.</div>}
 
       <div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-2xl border border-slate-100 p-5">
           <h2 className="flex items-center gap-2 font-semibold text-slate-900"><CreditCard className="h-5 w-5 text-brand-600" />{c.payment}</h2>
-          <div className="mt-4 flex items-center justify-between gap-3"><span className="text-sm text-slate-500">{order.payment.method === "cash" ? c.cash : c.card}</span><span className={cn("inline-flex items-center gap-1.5 text-sm font-semibold", paid ? "text-brand-700" : paymentProblem ? "text-rose-700" : "text-amber-700")}>{paid && <CheckCircle2 className="h-4 w-4" />}{c[paymentState]}</span></div>
+          <div className="mt-4 flex items-center justify-between gap-3"><span className="text-sm text-slate-500">{order.payment.method === "cash" ? c.cash : c.card}</span><span className={cn("inline-flex items-center gap-1.5 text-sm font-semibold", paid ? "text-brand-700" : paymentProblem ? "text-rose-700" : "text-amber-700")}>{paid && <CheckCircle2 className="h-4 w-4" />}{paymentLabel}</span></div>
         </section>
         <section className="rounded-2xl border border-slate-100 p-5">
           <h2 className="flex items-center gap-2 font-semibold text-slate-900"><Truck className="h-5 w-5 text-brand-600" />{c.delivery}</h2>

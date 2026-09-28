@@ -62,6 +62,7 @@ export async function createCheckoutQuote(input: {
   paymentMethod?: "card" | "cash";
   preferredPharmacy?: { id?: string; sourceCode?: string; address?: string; city?: string } | null;
   deliveryRequest?: CheckoutDeliveryRequest | null;
+  deliveryAccessToken?: string;
 }, dependencies: CheckoutQuoteDependencies = DEFAULT_QUOTE_DEPENDENCIES): Promise<CheckoutQuote> {
   const items = canonicalizeCheckoutItems(input.items);
   if (!items || items.length > 30) throw new CheckoutQuoteError(400, "invalid_quote_items");
@@ -87,11 +88,13 @@ export async function createCheckoutQuote(input: {
       const { resolveCheckoutDelivery } = await import("./checkout-delivery.ts");
       let resolved: Awaited<ReturnType<typeof resolveCheckoutDelivery>> | undefined;
       try {
-        resolved = await resolveCheckoutDelivery(quote, input.deliveryRequest);
+        resolved = await resolveCheckoutDelivery(quote, input.deliveryRequest, input.deliveryAccessToken);
       } catch (error) {
         // If the selected pharmacy cannot deliver, try only other pharmacies
         // returned by the same live Daribar v3 full-basket search.
-        if (input.deliveryRequest.mode !== "pharmacy" || !retryablePharmacyDeliveryError(error)) throw error;
+        if (input.deliveryRequest.mode !== "pharmacy"
+            || input.deliveryRequest.pharmacyId || preferredPharmacy?.id
+            || !retryablePharmacyDeliveryError(error)) throw error;
         const candidates: DaribarStockQuote[] = await dependencies.requestStockQuotes({
           items, city: input.deliveryRequest.city || quote.pharmacy.city,
           paymentMethod: input.paymentMethod || "card", limit: 20,
@@ -106,7 +109,7 @@ export async function createCheckoutQuote(input: {
               mode: "pharmacy",
               city: candidate.pharmacy.city,
               pharmacyId: candidate.pharmacy.id,
-            });
+            }, input.deliveryAccessToken);
             quote = candidateQuote;
             resolved = candidateResolved;
             break;
@@ -132,6 +135,9 @@ export async function createCheckoutQuote(input: {
           paymentMethod: input.paymentMethod || "card",
         });
         if (quote.pharmacy.id !== resolved.pharmacy.id) throw new CheckoutQuoteError(409, "delivery_pharmacy_mismatch");
+      }
+      if (kztMinorUnits(resolved.delivery.itemsPrice) !== kztMinorUnits(quote.subtotal)) {
+        throw new CheckoutQuoteError(409, "delivery_price_mismatch");
       }
       const { mapQuoteLinesToDaribar } = await import("./daribar/delivery-mapping.ts");
       const mapped = await mapQuoteLinesToDaribar(quote.lines);

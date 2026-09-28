@@ -54,6 +54,12 @@ export function isDaribarDeliveryEnabled(): boolean {
   return isDaribarEnabled() && /^(1|true|yes|on)$/i.test(String(process.env.DARIBAR_DELIVERY_ENABLED || ""));
 }
 
+/** Enable only after Daribar deploys both public delivery endpoints. */
+export function isDaribarPublicDeliveryEnabled(): boolean {
+  return isDaribarDeliveryEnabled()
+    && enabled(process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED);
+}
+
 export function daribarApiOrigin(): URL {
   return exactHttpsOrigin(
     String(process.env.DARIBAR_API_URL || "https://backoffice.daribar.com/"),

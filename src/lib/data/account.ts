@@ -4,6 +4,7 @@ export interface Order {
   id: string;
   detailId: string;
   providerOrderId?: string;
+  sourceSystem?: string;
   date: string;
   status: OrderStatus;
   total: number;

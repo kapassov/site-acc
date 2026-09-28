@@ -31,7 +31,8 @@ function harness(values=new Map()) {
     {addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)});
   const flush=()=>{for(let pass=0;pass<12;pass++){if(dirty){dirty=false;cursor=0;effectCursor=0;view=loadedModule.exports.CartProvider({children:null}).props.value;}
     const tasks=queue.splice(0);tasks.forEach(run=>run());if(!dirty&&!queue.length)return view;}throw Error('Unstable cart hooks');};
-  flush();return {values,calls,flush,view:()=>view,storage:event=>{listeners.get('storage')?.(event);return flush();}};
+  flush();return {values,calls,flush,view:()=>view,storage:event=>{listeners.get('storage')?.(event);return flush();},
+    logout:()=>{listeners.get('ass:logout')?.();return flush();}};
 }
 
 test('legacy cart migration notice survives new empty-cart persistence and repeated reloads',()=>{
@@ -69,6 +70,14 @@ test('cart clearing does not acknowledge migration, while another-tab acknowledg
   h.view().clear();h.flush();assert.equal(h.view().legacyItemsRemoved,true);assert.equal(h.values.get(NOTICE),'pending');
   const before=h.values.get(LEGACY);h.storage({key:NOTICE,newValue:'acknowledged'});
   assert.equal(h.view().legacyItemsRemoved,false);assert.equal(h.values.get(LEGACY),before);
+});
+test('logout clears customer cart and rotates its checkout identity',()=>{
+  const h=harness(new Map([[CURRENT,JSON.stringify([nativeItem])]]));
+  const previousId=h.view().cartInstanceId;
+  h.logout();
+  assert.deepEqual(h.view().items,[]);
+  assert.equal(h.values.get(CURRENT),'[]');
+  assert.notEqual(h.view().cartInstanceId,previousId);
 });
 test('every material cart or checkout-selection mutation rotates the durable cart identity',()=>{
   const h=harness(new Map([[CURRENT,JSON.stringify([nativeItem])]]));

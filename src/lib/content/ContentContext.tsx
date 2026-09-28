@@ -290,7 +290,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       throw new Error("order_status_uncertain");
     }
     clearCheckoutAttempt(attempt.key);
-    const order = data.order as Order;
+    const order = {
+      ...data.order as Order,
+      ...(typeof data.providerOrderId === "string" ? { providerOrderId: data.providerOrderId } : {}),
+    };
     setContent((prev) => {
       const next: Content = { ...prev, orders: [order, ...prev.orders.filter((x) => x.id !== order.id)] };
       contentRef.current = next;

@@ -11,6 +11,7 @@ export type CheckoutValidationInput = {
   address: string;
   delivery: CheckoutDelivery;
   pickupAvailable: boolean;
+  pharmacyRequired?: boolean;
 };
 
 export function validateCheckoutFields(input: CheckoutValidationInput): CheckoutFieldErrors {
@@ -24,6 +25,7 @@ export function validateCheckoutFields(input: CheckoutValidationInput): Checkout
   if (input.delivery === "pickup") {
     if (!input.pickupAvailable) errors.pharmacy = "Выберите доступную аптеку";
   } else {
+    if (input.pharmacyRequired && !input.pickupAvailable) errors.pharmacy = "Выберите доступную аптеку";
     const address = input.address.trim();
     if (!address) errors.address = "Укажите адрес доставки";
     else if (!/\d/.test(address)) errors.address = "Добавьте номер дома";

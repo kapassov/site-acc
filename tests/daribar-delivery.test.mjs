@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import {
-  DaribarDeliveryError, deliveryDestinationHash, deliveryForPharmacy,
+  DaribarDeliveryError, bestDeliveryInCity, deliveryDestinationHash, deliveryForPharmacy,
   normalizeDeliveryDestination, parseDaribarDeliveryOffer,
 } from "../src/lib/daribar/delivery.ts";
 import { buildDaribarOrderPayload } from "../src/lib/daribar/checkout.ts";
@@ -42,6 +42,99 @@ test("Daribar price response reconciles SKU, stock, item total and cheapest deli
   assert.deepEqual(parsed?.orderItems, [{ sku: "1234567890", countDesired: 2, pharmacyCount: 5 }]);
   const mismatch = actualOffer(); mismatch.items_price = 901;
   assert.equal(parseDaribarDeliveryOffer(mismatch, expected), null);
+});
+
+test("public prices sends customer JWT and handles omitted item source_code", async () => {
+  const oldFetch = globalThis.fetch;
+  const old = { enabled: process.env.DARIBAR_ENABLED, delivery: process.env.DARIBAR_DELIVERY_ENABLED,
+    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED };
+  process.env.DARIBAR_ENABLED = "true";
+  process.env.DARIBAR_DELIVERY_ENABLED = "true";
+  process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED = "true";
+  try {
+    globalThis.fetch = async (url, init) => {
+      assert.equal(new URL(String(url)).pathname, "/public/api/v2/delivery/prices");
+      assert.equal(new Headers(init.headers).get("authorization"), `Bearer ${"a".repeat(20)}`);
+      const body = JSON.parse(String(init.body));
+      assert.equal(body.source_code, "apteka_almaty_001");
+      const offer = actualOffer();
+      offer.items[0] = { ...offer.items[0] };
+      delete offer.items[0].source_code;
+      return Response.json({ status: "success", result: offer });
+    };
+    const offer = await deliveryForPharmacy({ sourceCode: "apteka_almaty_001", items: expected,
+      destination: { address: "Алматы, Абая, 123" }, accessToken: "a".repeat(20) });
+    assert.equal(offer.total, 1550);
+  } finally {
+    globalThis.fetch = oldFetch;
+    for (const [key, value] of Object.entries({ DARIBAR_ENABLED: old.enabled,
+      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test("public city best uses the documented endpoint and refuses a missing route", async () => {
+  const oldFetch = globalThis.fetch;
+  const old = { enabled: process.env.DARIBAR_ENABLED, delivery: process.env.DARIBAR_DELIVERY_ENABLED,
+    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED };
+  process.env.DARIBAR_ENABLED = "true";
+  process.env.DARIBAR_DELIVERY_ENABLED = "true";
+  process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED = "true";
+  try {
+    globalThis.fetch = async (url, init) => {
+      assert.equal(new URL(String(url)).pathname, "/public/api/v2/delivery/best");
+      assert.equal(new Headers(init.headers).get("authorization"), `Bearer ${"a".repeat(20)}`);
+      const body = JSON.parse(String(init.body));
+      assert.deepEqual(body.items, [{ sku: "1234567890", count_desired: 2 }]);
+      return new Response("Not Found", { status: 404 });
+    };
+    await assert.rejects(bestDeliveryInCity({ city: "Алматы", sourceCode: "apteka_almaty_001",
+      items: expected, destination: { address: "Алматы, Абая, 123" }, accessToken: "a".repeat(20) }),
+    error => error instanceof DaribarDeliveryError && error.code === "delivery_endpoint_not_available");
+  } finally {
+    globalThis.fetch = oldFetch;
+    for (const [key, value] of Object.entries({ DARIBAR_ENABLED: old.enabled,
+      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test("public city best parses a complete Daribar offer and keeps the selected source_code", async () => {
+  const oldFetch = globalThis.fetch;
+  const old = { enabled: process.env.DARIBAR_ENABLED, delivery: process.env.DARIBAR_DELIVERY_ENABLED,
+    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED };
+  process.env.DARIBAR_ENABLED = "true";
+  process.env.DARIBAR_DELIVERY_ENABLED = "true";
+  process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED = "true";
+  try {
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      assert.equal(body.city, "Алматы");
+      assert.equal(body.source_code, "apteka_almaty_001");
+      const best = actualOffer();
+      best.items[0] = { ...best.items[0] };
+      delete best.items[0].source_code;
+      return Response.json({ status: "success", result: { best, alternatives: [] } });
+    };
+    const result = await bestDeliveryInCity({ city: "Алматы", sourceCode: "apteka_almaty_001",
+      items: expected, destination: { address: "Алматы, Абая, 123" }, accessToken: "a".repeat(20) });
+    assert.equal(result.best.pharmacy.code, "apteka_almaty_001");
+    assert.equal(result.best.total, 1550);
+  } finally {
+    globalThis.fetch = oldFetch;
+    for (const [key, value] of Object.entries({ DARIBAR_ENABLED: old.enabled,
+      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test("selected-pharmacy courier checkout never silently falls back to another pharmacy", async () => {
+  const source = await readFile(new URL("../src/lib/checkoutQuote.ts", import.meta.url), "utf8");
+  assert.match(source, /input\.deliveryRequest\.pharmacyId \|\| preferredPharmacy\?\.id/);
+  assert.match(source, /kztMinorUnits\(resolved\.delivery\.itemsPrice\) !== kztMinorUnits\(quote\.subtotal\)/);
 });
 
 test("ondemand is normalized internally and destination is bound by a stable hash", () => {

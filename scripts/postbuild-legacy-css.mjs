@@ -124,3 +124,15 @@ for (const file of listCssFiles(staticDir)) {
 }
 
 console.log(`Legacy CSS compatibility: ${transformed} file(s) transformed in ${distDir}.`);
+
+// Production systemd launches <release>/server.js. Always refresh that entry
+// point from the build that produced the current .next tree; keeping the
+// previously committed file can mix two Next.js runtime configs and crash all
+// route handlers before application code runs.
+const standaloneServer = path.resolve(distDir, "standalone", "server.js");
+const deploymentServer = path.resolve("server.js");
+if (!fs.existsSync(standaloneServer)) {
+  throw new Error(`Standalone server entry point is missing: ${standaloneServer}`);
+}
+fs.copyFileSync(standaloneServer, deploymentServer);
+console.log(`Standalone server entry point refreshed: ${deploymentServer}.`);

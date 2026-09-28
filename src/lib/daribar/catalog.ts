@@ -21,6 +21,7 @@ import {
   readDaribarCatalogSnapshot,
 } from "./snapshot-file.ts";
 import { readDaribarCatalogDatabase } from "./catalog-db.ts";
+import { hydrateDaribarCatalogPageStock } from "./catalog-live-stock.ts";
 
 // Product normalization excludes «конфиг-рацион» and exposes images only through /api/media/daribar?sku=.
 
@@ -523,8 +524,19 @@ export async function getDaribarCatalogPage(query: CatalogQuery, city?: string, 
   ensureSupportedCategory(query);
   const snapshot = query.q ? await productSearchSnapshot(query.q, city, options) : await categorySnapshot(city);
   if (snapshot.searchEngine !== "typesense") await validateNativeKeywordFilters(query, snapshot, city);
+  const page = pageFromProducts(snapshot.products, query, snapshot, Boolean(query.q), snapshot.sourceMode);
+  const live = await hydrateDaribarCatalogPageStock(page.products, daribarCategoryCity(city));
   return {
-    ...pageFromProducts(snapshot.products, query, snapshot, Boolean(query.q), snapshot.sourceMode),
+    ...page,
+    // Never render an unavailable Daribar card. In production the page is
+    // filtered only after v3 has confirmed an exact SKU in a mapped ASS
+    // pharmacy; on a provider failure we fail closed instead of reviving the
+    // older aggregate availability from the catalogue snapshot.
+    products: live.authoritative
+      ? live.products.filter((product) => product.inStock && product.stockStale === false)
+      : live.complete ? live.products : [],
+    complete: page.complete && live.complete,
+    stale: page.stale || !live.complete,
     ...(snapshot.search ? { search: snapshot.search, searchEngine: snapshot.searchEngine } : {}),
   };
 }

@@ -29,6 +29,7 @@ import { canonicalCityName } from "@/lib/i18n/cities";
 import { kztMinorUnits } from "@/lib/money";
 import { deliveryDetailsComment, normalizeDeliveryDetails } from "@/lib/checkout/delivery-details";
 import { checkoutHasPrescription, prescriptionCheckoutAllowed } from "@/lib/checkout/prescription-policy";
+import { ordersAcceptingNow } from "@/lib/checkout/order-hours";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
@@ -185,6 +186,9 @@ export async function POST(req: Request) {
     if (attempt.outcome === "pending") return respond({ error: "checkout_in_progress", recovery: "check_orders" }, 409);
     if (attempt.outcome === "conflict") return respond({ error: "checkout_attempt_conflict" }, 409);
     durableAttemptId = attempt.attemptId;
+    // Replays belong to existing orders and remain payable after closing.
+    step = "opening_hours";
+    if (!ordersAcceptingNow()) throw new CheckoutQuoteError(409, "pharmacy_closed");
     if (verifiedQuote.source === "daribar") {
       // Replay was handled above. Only a new attempt rechecks the exact basket
       // at the exact pharmacy before any provider-side order can be created.

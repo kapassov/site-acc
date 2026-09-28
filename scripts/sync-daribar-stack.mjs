@@ -22,6 +22,6 @@ function run(script, args = []) {
 // that exact snapshot. PostgreSQL publishes last; until it does, the runtime's
 // generatedAt guard rejects the newer index instead of mixing two versions.
 await run("scripts/sync-daribar-catalog.mjs");
+await run("scripts/sync-daribar-pharmacies.mjs");
 await run("scripts/sync-typesense-catalog.mjs", ["--retain-versions", "3"]);
 await run("scripts/publish-daribar-catalog.mjs");
-

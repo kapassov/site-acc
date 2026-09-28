@@ -29,10 +29,10 @@ function parseArgs(argv) {
   const options = {
     output: process.env.DARIBAR_CATALOG_SNAPSHOT_PATH || "data/daribar-catalog.snapshot.json",
     city: process.env.DARIBAR_DEFAULT_CITY || "Алматы",
-    concurrency: 4,
+    concurrency: 2,
     pageSize: 500,
     timeoutMs: 25_000,
-    retries: 3,
+    retries: 5,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];

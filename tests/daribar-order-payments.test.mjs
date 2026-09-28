@@ -67,9 +67,18 @@ test("Daribar payment response is sorted and private payment data is reduced to 
     updatedAt: "2026-09-01T10:05:00Z",
     numInOrder: 2,
     hasPaymentUrl: true,
+    chargedTotal: 5400,
     refundAmount: 300,
     refundStatus: "refund_ready",
   });
+});
+
+test("customer-visible amount omitting delivery still yields the complete charged total", () => {
+  const parsed = parseDaribarOrderPayments({
+    status: "success",
+    result: [payment({ amount: 4500, items_amount: 4500, delivery_amount: 900, status: "paid" })],
+  }, orderId);
+  assert.equal(summarizeDaribarOrderPayments(parsed)?.chargedTotal, 5400);
 });
 
 test("a paid whole-order attempt remains authoritative over a later failed retry", () => {

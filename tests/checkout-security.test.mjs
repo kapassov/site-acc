@@ -144,7 +144,7 @@ test("ambiguous payment failures are sanitized and block duplicate checkout", as
   assert.match(page, /const checkoutRecoverable = formError === "orderStatusUncertain"/);
   assert.match(page, /checkoutRecoverable[\s\S]*?copy\.action\.retryOrderStatus/);
   assert.match(page, /type="submit"[\s\S]*?copy\.action\.retryOrderStatus/);
-  assert.match(page, /disabled=\{checkoutBlocked \|\| submitting/);
+  assert.match(page, /disabled=\{checkoutBlocked \|\| timeClosed \|\| submitting/);
   assert.match(page, /href="\/account\/orders"/);
   assert.doesNotMatch(page, /copy\.payment\.switchToCash/);
 });

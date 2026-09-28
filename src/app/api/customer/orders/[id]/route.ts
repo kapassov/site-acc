@@ -34,12 +34,19 @@ function localLines(order: StoredOrder): LocalLine[] {
   });
 }
 
-async function catalogRows(productIds: string[]): Promise<Map<string, CatalogRow>> {
+async function catalogRows(productIds: string[], sourceSystem: string): Promise<Map<string, CatalogRow>> {
   const ids = [...new Set(productIds.filter(Boolean))].slice(0, 200);
   if (!ids.length) return new Map();
   try {
     const db = await ordersDatabasePool();
-    const result = await db.query<CatalogRow>(`
+    const result = await db.query<CatalogRow>(sourceSystem === "daribar" ? `
+      SELECT catalog.product->>'id' AS id, catalog.product->>'slug' AS handle,
+             catalog.product->>'name' AS title, catalog.product->>'image' AS thumbnail_url
+      FROM daribar_catalog_state state
+      JOIN daribar_catalog_runs run ON run.id = state.active_run_id AND run.status = 'published'
+      JOIN daribar_catalog_products catalog ON catalog.run_id = run.id
+      WHERE state.singleton AND catalog.product->>'id' = ANY($1::text[])
+    ` : `
       SELECT id::text, handle, title, thumbnail_url
       FROM catalog_products
       WHERE id::text = ANY($1::text[])
@@ -65,7 +72,7 @@ async function orderDetail(
   paymentAvailable = false,
 ) {
   const lines = localLines(order);
-  const catalog = await catalogRows(lines.map((line) => line.productId));
+  const catalog = await catalogRows(lines.map((line) => line.productId), order.sourceSystem);
   const metadata = order.metadata || {};
   return {
     ...customerOrderSummary(order, snapshot, payment),
@@ -98,6 +105,7 @@ async function orderDetail(
       paidAt: payment?.paidAt || null,
       refundAmount: payment?.refundAmount || 0,
       refundStatus: payment?.refundStatus || null,
+      chargedTotal: payment?.chargedTotal ?? null,
     },
     providerStatus: snapshot?.rawStatus || snapshot?.status || cleanText(metadata.provider_status, 100),
     providerAvailable: Boolean(snapshot) || paymentAvailable,

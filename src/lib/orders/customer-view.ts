@@ -84,6 +84,7 @@ export function customerOrderSummary(
     id: `INK-${order.n}`,
     detailId: order.id,
     providerOrderId: order.sourceOrderId,
+    sourceSystem: order.sourceSystem,
     date: order.date,
     status: customerOrderStatus(order, snapshot, payment),
     total: order.sum,

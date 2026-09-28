@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { kztMinorUnits } from "../money.ts";
 import { DaribarHttpError, daribarJson } from "./client.ts";
-import { isDaribarDeliveryEnabled } from "./config.ts";
+import { isDaribarDeliveryEnabled, isDaribarPublicDeliveryEnabled } from "./config.ts";
 
 export type DaribarDeliveryMode = "city" | "pharmacy";
 export type DaribarDeliveryProvider = "yandex" | "choco" | "wolt";
@@ -96,7 +96,9 @@ function parseOrderItems(value: unknown, pharmacyCode: string, itemsPrice: numbe
   const parsed = new Map<string, DaribarDeliveryOrderItem>();
   let totalMinor = 0;
   for (const item of value) {
-    const raw = record(item), sku = text(raw?.sku, 160), sourceCode = text(raw?.source_code, 128);
+    const raw = record(item), sku = text(raw?.sku, 160);
+    // The public /delivery/best contract does not include source_code in items.
+    const sourceCode = raw?.source_code == null ? pharmacyCode : text(raw.source_code, 128);
     const countDesired = integer(raw?.quantity_desired, 1, 99), pharmacyCount = integer(raw?.quantity, 0, 10_000_000);
     const unitPrice = money(raw?.price_with_warehouse_discount) ?? money(raw?.base_price);
     if (!raw || !/^[A-Za-z0-9._-]{1,160}$/.test(sku) || parsed.has(sku) || sourceCode !== pharmacyCode
@@ -168,21 +170,65 @@ async function call(path: "/api/v2/delivery/prices" | "/api/v2/delivery/alternat
     throw error;
   }
 }
-export async function deliveryForPharmacy(input: { sourceCode: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination }): Promise<DaribarDeliveryOffer> {
+async function callPublic(path: "/public/api/v2/delivery/prices" | "/public/api/v2/delivery/best", body: unknown, accessToken?: string): Promise<unknown> {
+  if (!isDaribarPublicDeliveryEnabled()) throw new DaribarDeliveryError(503, "delivery_not_enabled");
+  const token = typeof accessToken === "string" ? accessToken.trim() : "";
+  if (token.length < 20 || token.length > 8_192 || /\s/.test(token)) {
+    throw new DaribarDeliveryError(401, "delivery_auth_required");
+  }
+  try {
+    return await daribarJson(path, { method: "POST", origin: "commerce", auth: false, body,
+      headers: { authorization: `Bearer ${token}` }, timeoutMs: 20_000, maxBytes: 512 * 1024 });
+  } catch (error) {
+    if (error instanceof DaribarHttpError) {
+      if (error.status === 404) throw new DaribarDeliveryError(503, "delivery_endpoint_not_available");
+      if (error.status === 401 || error.status === 403) throw new DaribarDeliveryError(401, "delivery_auth_required");
+      if (error.status === 409) throw new DaribarDeliveryError(409, "no_delivery_available");
+      throw new DaribarDeliveryError(error.status >= 400 ? error.status : 502, "delivery_service_unavailable");
+    }
+    throw error;
+  }
+}
+export async function deliveryForPharmacy(input: { sourceCode: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination; accessToken?: string }): Promise<DaribarDeliveryOffer> {
   const sourceCode = text(input.sourceCode, 128), items = normalizedItems(input.items);
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(sourceCode)) throw new DaribarDeliveryError(400, "invalid_delivery_pharmacy");
-  const response = unwrap(await call("/api/v2/delivery/prices", { source_code: sourceCode, items, dst: normalizeDeliveryDestination(input.destination) }));
+  const body = { source_code: sourceCode, items, dst: normalizeDeliveryDestination(input.destination) };
+  const response = unwrap(isDaribarPublicDeliveryEnabled()
+    ? await callPublic("/public/api/v2/delivery/prices", body, input.accessToken)
+    : await call("/api/v2/delivery/prices", body));
   if (response.result === null) throw new DaribarDeliveryError(409, "selected_pharmacy_unavailable");
   const parsed = parseDaribarDeliveryOffer(response.result, items.map(item => ({ sku: item.sku, countDesired: item.count_desired })));
   const offer = parsed ? orderableOffer(parsed) : null;
   if (!offer || offer.pharmacy.code !== sourceCode) throw new DaribarDeliveryError(502, "delivery_invalid_response");
   return offer;
 }
-export async function bestDeliveryInCity(input: { city: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination; sourceCode: string }): Promise<{ best: DaribarDeliveryOffer; alternatives: DaribarDeliveryOffer[] }> {
+export async function bestDeliveryInCity(input: { city: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination; sourceCode: string; accessToken?: string }): Promise<{ best: DaribarDeliveryOffer; alternatives: DaribarDeliveryOffer[] }> {
   const city = text(input.city, 100), sourceCode = text(input.sourceCode, 128), items = normalizedItems(input.items);
   if (!city) throw new DaribarDeliveryError(400, "delivery_city_required");
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(sourceCode)) throw new DaribarDeliveryError(400, "invalid_delivery_pharmacy");
-  const response = unwrap(await call("/api/v2/delivery/alternatives", { source_code: sourceCode, items, dst: normalizeDeliveryDestination(input.destination) }));
+  const destination = normalizeDeliveryDestination(input.destination);
+  if (isDaribarPublicDeliveryEnabled()) {
+    const response = unwrap(await callPublic("/public/api/v2/delivery/best",
+      { city, source_code: sourceCode, items, dst: destination, limit: 10 }, input.accessToken));
+    const result = record(response.result);
+    if (!result || !Array.isArray(result.alternatives)) throw new DaribarDeliveryError(502, "delivery_invalid_response");
+    if (result.best === null) throw new DaribarDeliveryError(409, "no_delivery_available");
+    const expected = items.map(item => ({ sku: item.sku, countDesired: item.count_desired }));
+    const best = parseDaribarDeliveryOffer(result.best, expected);
+    const orderableBest = best ? orderableOffer(best) : null;
+    if (!orderableBest) throw new DaribarDeliveryError(502, "delivery_invalid_response");
+    const normalizedCity = city.toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+    if (orderableBest.pharmacy.city.normalize("NFKC").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ") !== normalizedCity) {
+      throw new DaribarDeliveryError(502, "delivery_invalid_response");
+    }
+    const alternatives = result.alternatives
+      .map(value => parseDaribarDeliveryOffer(value, expected))
+      .map(offer => offer ? orderableOffer(offer) : null)
+      .filter((offer): offer is DaribarDeliveryOffer => Boolean(offer)
+        && offer!.pharmacy.city.normalize("NFKC").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ") === normalizedCity);
+    return { best: orderableBest, alternatives };
+  }
+  const response = unwrap(await call("/api/v2/delivery/alternatives", { source_code: sourceCode, items, dst: destination }));
   if (!Array.isArray(response.result)) throw new DaribarDeliveryError(502, "delivery_invalid_response");
   const expected = items.map(item => ({ sku: item.sku, countDesired: item.count_desired }));
   const offers = response.result.map(value => parseDaribarDeliveryOffer(value, expected));

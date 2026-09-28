@@ -5,10 +5,18 @@ import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/checkoutItems";
 import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 import { checkoutHasPrescription, prescriptionCheckoutAllowed } from "@/lib/checkout/prescription-policy";
+import { isDaribarPublicDeliveryEnabled } from "@/lib/daribar/config";
+import { daribarCustomerSession, DaribarCustomerSessionError } from "@/lib/daribar/customer-session";
+import { setDaribarAuthCookies, type DaribarAuthTokens } from "@/lib/daribar/auth";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "cache-control": "no-store" };
+function reply(payload: Record<string, unknown>, status: number, rotatedTokens?: DaribarAuthTokens | null) {
+  const response = NextResponse.json(payload, { status, headers: NO_STORE });
+  if (rotatedTokens) setDaribarAuthCookies(response, rotatedTokens);
+  return response;
+}
 
 export async function POST(request: Request) {
   const now = Date.now();
@@ -29,9 +37,17 @@ export async function POST(request: Request) {
   }
   const fulfillment = body.fulfillment === "pickup" ? "pickup" : "pharmacy";
   const paymentMethod = body.paymentMethod === "cash" ? "cash" : "card";
+  let deliveryAccessToken: string | undefined;
+  let rotatedTokens: DaribarAuthTokens | null = null;
   try {
     if (!prescriptionCheckoutAllowed(await checkoutHasPrescription(items), fulfillment, paymentMethod)) {
       return NextResponse.json({ error: "prescription_pickup_cash_only" }, { status: 409, headers: NO_STORE });
+    }
+    if (fulfillment === "pharmacy" && isDaribarPublicDeliveryEnabled()) {
+      const session = await daribarCustomerSession(request);
+      if (!session) return reply({ error: "delivery_auth_required" }, 401);
+      deliveryAccessToken = session.accessToken;
+      rotatedTokens = session.rotatedTokens;
     }
     const quote = await createCheckoutQuote({
       items: items as QuoteItem[],
@@ -43,12 +59,17 @@ export async function POST(request: Request) {
       deliveryRequest: body.deliveryRequest && typeof body.deliveryRequest === "object"
         ? body.deliveryRequest as { mode: "city" | "pharmacy"; city: string; address: string; pharmacyId?: string }
         : null,
+      deliveryAccessToken,
     });
-    return NextResponse.json({ quote }, { status: 200, headers: NO_STORE });
+    return reply({ quote }, 200, rotatedTokens);
   } catch (error) {
-    if (error instanceof CheckoutQuoteError) {
-      return NextResponse.json({ error: error.code }, { status: error.status, headers: NO_STORE });
+    if (error instanceof DaribarCustomerSessionError) {
+      return reply({ error: error.status === 401 ? "delivery_auth_required" : "delivery_service_unavailable" },
+        error.status, error.rotatedTokens);
     }
-    return NextResponse.json({ error: "quote_unavailable" }, { status: 503, headers: NO_STORE });
+    if (error instanceof CheckoutQuoteError) {
+      return reply({ error: error.code }, error.status, rotatedTokens);
+    }
+    return reply({ error: "quote_unavailable" }, 503, rotatedTokens);
   }
 }
