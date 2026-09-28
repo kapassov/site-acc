@@ -56,7 +56,7 @@ async function fixture(t, options = {}) {
     if (url.origin === "https://backoffice.daribar.com" && url.pathname === "/api/v1/search/keyword") {
       const body = JSON.parse(init.body);
       calls.push({ engine: "daribar", ...body });
-      const products = body.keyword === "парацетамол" ? liveProducts : options.originalProducts || [];
+      const products = body.keyword === (options.correctedKeyword || "парацетамол") ? liveProducts : options.originalProducts || [];
       return Response.json({ products, total_count: products.length, total_pages: products.length ? 1 : 0, current_page: 1 });
     }
     unexpected.push({ origin: url.origin, path: url.pathname });
@@ -119,6 +119,17 @@ test("оспирин resolves to the source Aspirin identity even when Daribar s
   assert.deepEqual(result.products.map(item => item.sku), ["ASPIRIN"]);
   assert.equal(result.search.matchedQuery, "Аспирин");
   assert.ok(state.keywords().includes("оспирин"));
+});
+
+test("a unique partial name «тирз» finds Tirzetta with live city prices when Typesense is down", async t => {
+  const sourceProducts = [raw("TIR-25", "Тирзетта 2,5 мг раствор"), raw("TIR-50", "Тирзетта 5 мг раствор")];
+  const liveProducts = sourceProducts.map(item => ({ ...item, min_customer_price: 1245, quantity: 3 }));
+  const state = await fixture(t, { sourceProducts, liveProducts, correctedKeyword: "тирзетта" });
+  const result = await searchDaribarProductsWithMetadata("тирз", 48, "Алматы");
+  assert.deepEqual(result.products.map(item => item.sku), ["TIR-25", "TIR-50"]);
+  assert.ok(result.products.every(item => item.price === 1245));
+  assert.deepEqual(result.search, { query: "тирз", matchedQuery: null, matchType: "exact", degraded: true });
+  assert.deepEqual(state.keywords(), ["тирз", "тирзетта"]);
 });
 
 test("native retry keeps original dose, unit, form and package despite broad canonical response", async t => {

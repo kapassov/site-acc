@@ -4,7 +4,7 @@ import type { PriceInfo } from "../price-info.ts";
 import type { Brand, Category, Product } from "../types.ts";
 import type { ProductSearchEngine, ProductSearchMetadata } from "../search/search-metadata.ts";
 import { typesenseSearchConfigured } from "../search/typesense-client.ts";
-import { parseProductSearchQuery, resolveSourceVowelFallback } from "../search/product-search-model.ts";
+import { parseProductSearchQuery, resolveSourceNamePrefix, resolveSourceVowelFallback } from "../search/product-search-model.ts";
 import { daribarSearchLookupNames, directlyMatchesProductName, guardNativeDaribarSearch, searchDaribarSnapshot } from "./indexed-search.ts";
 import { daribarJson } from "./client.ts";
 import { daribarDefaultCity, isDaribarEnabled } from "./config.ts";
@@ -399,6 +399,18 @@ async function productSearchSnapshot(
   const exactSku = native.products.find(product => product.sku === q);
   let products = exactSku ? [exactSku] : guardNativeDaribarSearch(native.products, q, options.exact, { sourceProducts });
   let matchedQuery: string | null = null;
+  if (!products.length && sourceProducts) {
+    const completion = resolveSourceNamePrefix(parseProductSearchQuery(q).nameQuery, sourceProducts);
+    if (completion) {
+      try {
+        const completed = await keywordSnapshot(completion, city);
+        products = guardNativeDaribarSearch(completed.products, q, options.exact, { sourceProducts });
+        if (products.length) native = completed;
+      } catch {
+        // Keep the original result if the provider cannot hydrate this prefix.
+      }
+    }
+  }
   // In degraded mode the provider may return a different medicine for a typo.
   // A unique source lead-name vowel correction can recover the requested identity,
   // but a literal provider name (including a newly added SKU) always wins.

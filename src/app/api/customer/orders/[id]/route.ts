@@ -3,6 +3,7 @@ import { setDaribarAuthCookies } from "@/lib/daribar/auth";
 import { DaribarCustomerSessionError, daribarCustomerSession } from "@/lib/daribar/customer-session";
 import { getDaribarCustomerOrderPayment, type DaribarOrderPaymentSnapshot } from "@/lib/daribar/order-payments";
 import { getDaribarCustomerOrder, type DaribarOrderSnapshot } from "@/lib/daribar/order-status";
+import { daribarProductSlug, daribarSkuFromProductId } from "@/lib/daribar/ids";
 import { medusaMediaUrl } from "@/lib/media-url";
 import { customerOrderSummary, providerMetadataPatch } from "@/lib/orders/customer-view";
 import { availableServiceActions, storedServiceRequest } from "@/lib/orders/service-request";
@@ -121,14 +122,19 @@ async function orderDetail(
     items: lines.map((line, index) => {
       const product = catalog.get(line.productId);
       const provider = snapshot?.items[index];
+      const sku = line.sku || provider?.sku || "";
       return {
         productId: line.productId,
-        sku: line.sku || provider?.sku || "",
+        sku,
         title: product?.title || line.title || provider?.name || line.sku || "Товар",
         quantity: line.quantity,
         unitPrice: line.unitPrice,
         total: line.unitPrice * line.quantity,
-        handle: product?.handle || null,
+        // Historical orders may outlive a catalog run. Their Daribar SKU is
+        // sufficient to resolve the current product without changing its identity.
+        handle: product?.handle || (order.sourceSystem === "daribar"
+          && sku && daribarSkuFromProductId(line.productId) === sku
+          ? daribarProductSlug("tovar", sku) : null),
         image: medusaMediaUrl(product?.thumbnail_url) || null,
       };
     }),

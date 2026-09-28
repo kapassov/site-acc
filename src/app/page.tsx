@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Hero } from "@/components/home/Hero";
 import { HomeUtilityLinks } from "@/components/home/HomeUtilityLinks";
 import { FeaturedProductsTabs } from "@/components/home/FeaturedProductsTabs";
@@ -15,33 +16,47 @@ import { getBestsellers, getDeals, getBrands, getCategoryProducts, getCatTree } 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function Home() {
-  const [bestsellers, deals, brandList, seasonalResult, categoryTree] = await Promise.all([
-    getBestsellers(),
-    getDeals(),
-    getBrands(6),
-    getCategoryProducts("zagar-i-zashita-ot-solnca", 6).catch(() => ({ products: [], count: 0 })),
-    getCatTree().catch(() => []),
-  ]);
+async function FeaturedCatalogProducts() {
+  const [bestsellers, deals] = await Promise.all([getBestsellers(), getDeals()]);
   // The current Medusa feed has no trustworthy created-at ordering yet, so the
   // "new" tab reuses the safe assortment instead of repeating the same query.
   const newArrivals = bestsellers;
-  const seasonalProducts = seasonalResult.products.length ? seasonalResult.products : newArrivals;
+  return <Reveal><FeaturedProductsTabs popular={bestsellers} deals={deals} newArrivals={newArrivals} /></Reveal>;
+}
 
+async function SeasonalCatalogProducts() {
+  const seasonalResult = await getCategoryProducts("zagar-i-zashita-ot-solnca", 6).catch(() => ({ products: [], count: 0 }));
+  const products = seasonalResult.products.length ? seasonalResult.products : await getBestsellers();
+  return <Reveal><SeasonalCollection products={products} /></Reveal>;
+}
+
+async function CatalogBrands() {
+  return <BrandStrip brands={await getBrands(6)} compact />;
+}
+
+async function CatalogTree() {
+  return <Reveal><CatalogDirectory tree={await getCatTree().catch(() => [])} /></Reveal>;
+}
+
+function SectionPlaceholder({ height }: { height: string }) {
+  return <div aria-hidden="true" className={`animate-pulse rounded-2xl bg-slate-100 ${height}`} />;
+}
+
+export default function Home() {
   return (
     <div className="space-y-10 pb-4 sm:space-y-14">
       <div className="space-y-3 sm:space-y-4">
         <Hero />
         <HomeUtilityLinks />
       </div>
-      <Reveal><FeaturedProductsTabs popular={bestsellers} deals={deals} newArrivals={newArrivals} /></Reveal>
+      <Suspense fallback={<SectionPlaceholder height="min-h-72" />}><FeaturedCatalogProducts /></Suspense>
       <Reveal><ProblemCollections /></Reveal>
       <Reveal><CategoryGrid /></Reveal>
-      <Reveal><SeasonalCollection products={seasonalProducts} /></Reveal>
+      <Suspense fallback={<SectionPlaceholder height="min-h-64" />}><SeasonalCatalogProducts /></Suspense>
       <Reveal>
         <div className="space-y-7 sm:space-y-9">
           <PromoGrid />
-          <BrandStrip brands={brandList} compact />
+          <Suspense fallback={<SectionPlaceholder height="min-h-24" />}><CatalogBrands /></Suspense>
         </div>
       </Reveal>
       <Reveal>
@@ -50,7 +65,7 @@ export default async function Home() {
           <LoyaltyBanner />
         </div>
       </Reveal>
-      <Reveal><CatalogDirectory tree={categoryTree} /></Reveal>
+      <Suspense fallback={<SectionPlaceholder height="min-h-40" />}><CatalogTree /></Suspense>
     </div>
   );
 }

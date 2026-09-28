@@ -202,7 +202,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setAddresses([]);
     setAddressIds([]);
-    window.dispatchEvent(new Event("ass:logout"));
     if (pendingLogoutRef.current) return;
     const pendingLogout = requestAuthJson("/api/customer", {
       method: "POST",

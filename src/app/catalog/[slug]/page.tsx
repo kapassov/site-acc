@@ -23,15 +23,15 @@ export default async function CategoryPage({ params, searchParams }: { params: P
   const requestedPage = Array.isArray(rawSearch.page) ? rawSearch.page[0] : rawSearch.page;
   const canonicalSlug = storefrontCatalogSource() === "daribar" ? slug : resolveMedusaCategoryHandle(slug);
   if (canonicalSlug !== slug) redirect(`/catalog/${canonicalSlug}`);
-  const categoryName = await getCategoryName(canonicalSlug);
-  if (!categoryName) notFound();
   const queryParams = new URLSearchParams({ category: canonicalSlug, limit: "21", facets: "0" });
   if (requestedPage && /^\d{1,6}$/.test(requestedPage)) queryParams.set("page", requestedPage);
   const initialQuery = parseCatalogQuery(queryParams);
-  const [catalogPage, tree] = await Promise.all([
+  const [categoryName, catalogPage, tree] = await Promise.all([
+    getCategoryName(canonicalSlug),
     getStorefrontCatalogPage(initialQuery).catch(() => null),
     getStorefrontNavigation().catch(() => []),
   ]);
+  if (!categoryName) notFound();
 
   return (
     <CatalogView

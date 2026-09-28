@@ -33,7 +33,7 @@ test("unambiguous corrected text comes from the server, never from the first pro
   assert.equal(correctedSearchQuery(metadata({ query: " НУРОФЕН " })), null);
   assert.equal(correctedSearchQuery(metadata({ matchType: "exact" })), null);
   assert.equal(correctedSearchQuery(metadata({ matchType: "none" })), null);
-  assert.equal(correctedSearchQuery(metadata({ degraded: true })), null);
+  assert.equal(correctedSearchQuery(metadata({ degraded: true })), "Нурофен");
   assert.equal(correctedSearchQuery(null), null);
 });
 

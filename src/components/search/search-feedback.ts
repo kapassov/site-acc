@@ -22,7 +22,7 @@ export function readSearchFeedback(value: unknown, query: string): SearchFeedbac
 }
 
 export function correctedSearchQuery(metadata: SearchFeedbackMeta | null): string | null {
-  if (!metadata || metadata.degraded || metadata.matchType === "exact" || metadata.matchType === "none") return null;
+  if (!metadata || metadata.matchType === "exact" || metadata.matchType === "none") return null;
   const corrected = metadata.matchedQuery?.trim();
   if (!corrected || corrected.toLocaleLowerCase("ru") === metadata.query.trim().toLocaleLowerCase("ru")) return null;
   return corrected;

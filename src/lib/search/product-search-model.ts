@@ -345,6 +345,27 @@ export function parseProductSearchQuery(input: string): ParsedProductSearchQuery
 
 const vowelSourceNames = new WeakMap<Product, { name: string; words: string[] }>();
 
+/** Expand only a unique leading Daribar name from a complete catalog snapshot. */
+export function resolveSourceNamePrefix(nameQuery: string, products: readonly Product[]): string | null {
+  if (!/^[\p{L}]{3,40}$/u.test(nameQuery)) return null;
+  let completion: string | null = null;
+  let literalNameExists = false;
+  for (const product of products) {
+    if (product.source !== "daribar" || !product.sku) continue;
+    let cached = vowelSourceNames.get(product);
+    if (!cached || cached.name !== product.name) {
+      cached = { name: product.name, words: normalizeProductSearchText(product.name).split(/[^\p{L}\p{N}]+/u).filter(Boolean) };
+      vowelSourceNames.set(product, cached);
+    }
+    if (cached.words.includes(nameQuery)) literalNameExists = true;
+    const first = cached.words[0] || "";
+    if (!first.startsWith(nameQuery) || first === nameQuery) continue;
+    if (completion && completion !== first) return null;
+    completion = first;
+  }
+  return literalNameExists ? null : completion;
+}
+
 function uniqueSourceVowelName(
   nameQuery: string,
   products: readonly Product[],

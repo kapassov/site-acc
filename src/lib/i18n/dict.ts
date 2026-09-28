@@ -125,7 +125,7 @@ export const dict: Record<Lang, Dict> = {
     "search.emptyHelp": "Проверьте название, дозировку и выбранные фильтры или попробуйте другой запрос.",
     "search.corrected": "Показаны результаты для", "search.original": "Искать как введено", "search.enableTypos": "Учитывать опечатки",
     "search.exactMode": "Поиск без исправления названия", "search.similar": "Найдены похожие названия. Проверьте препарат, дозировку и форму выпуска.",
-    "search.degraded": "Поиск с исправлением опечаток временно недоступен. Ищем по введённому названию.",
+    "search.degraded": "Поиск работает в ограниченном режиме. Некоторые товары могут не отображаться.",
     // brands
     "brands.title": "Бренды", "brands.sub": "Эксклюзивные марки косметики и ухода у нас", "brands.soon": "Товары этого бренда скоро появятся",
     // badges
@@ -247,7 +247,7 @@ export const dict: Record<Lang, Dict> = {
     "search.emptyHelp": "Атауын, мөлшерін және таңдалған сүзгілерді тексеріңіз немесе басқа сұраныс енгізіңіз.",
     "search.corrected": "Нәтижелер осы сұраныс бойынша көрсетілді:", "search.original": "Енгізілген нұсқа бойынша іздеу", "search.enableTypos": "Теру қателерін ескеру",
     "search.exactMode": "Атауды түзетпей іздеу", "search.similar": "Ұқсас атаулар табылды. Препаратты, мөлшерін және дәрілік түрін тексеріңіз.",
-    "search.degraded": "Теру қателерін түзететін іздеу уақытша қолжетімсіз. Енгізілген атау бойынша іздеп жатырмыз.",
+    "search.degraded": "Іздеу шектеулі режимде жұмыс істеп тұр. Кейбір тауарлар көрсетілмеуі мүмкін.",
     "brands.title": "Брендтер", "brands.sub": "Косметика мен күтімнің эксклюзив маркалары", "brands.soon": "Бұл бренд тауарлары жақында пайда болады",
     "badge.sale": "Жеңілдік", "badge.hit": "Хит", "badge.new": "Жаңа", "badge.rx": "Рецепт",
     "ai.title": "AI-фармацевт Saumi", "ai.sub": "Симптом бойынша дәрі мен күтім таңдау",
@@ -365,7 +365,7 @@ export const dict: Record<Lang, Dict> = {
     "search.emptyHelp": "Check the name, strength and selected filters, or try another search.",
     "search.corrected": "Showing results for", "search.original": "Search as typed", "search.enableTypos": "Allow spelling corrections",
     "search.exactMode": "Searching without spelling corrections", "search.similar": "Similar names found. Check the medicine, strength and dosage form.",
-    "search.degraded": "Spelling correction is temporarily unavailable. Searching for the name as typed.",
+    "search.degraded": "Search is running in a limited mode. Some products may not appear.",
     "brands.title": "Brands", "brands.sub": "Exclusive cosmetics and skincare labels with us", "brands.soon": "Products of this brand are coming soon",
     "badge.sale": "Sale", "badge.hit": "Hit", "badge.new": "New", "badge.rx": "Rx",
     "ai.title": "AI pharmacist Saumi", "ai.sub": "Product recommendations by symptom",

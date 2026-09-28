@@ -13,6 +13,9 @@ test("recent provider-confirmed orders allow only a cancellation request", () =>
   assert.equal(availableServiceActions(order(CANCELLATION_WINDOW_MS + 1), snapshot(), null, NOW).canCancel, false);
   assert.equal(availableServiceActions(order(), undefined, null, NOW).canCancel, false);
   assert.equal(availableServiceActions(order(), snapshot("in_the_way"), null, NOW).canCancel, false);
+  assert.equal(availableServiceActions(order(), snapshot("assembling"), null, NOW).canCancel, false);
+  assert.equal(availableServiceActions(order(), snapshot("accepted"), null, NOW).canCancel, false,
+    "accepted/processing does not prove the pharmacy has not started assembly");
   assert.equal(availableServiceActions(order(), snapshot("completed"), null, NOW).canCancel, false);
   assert.equal(availableServiceActions({ ...order(), status: "cancelled" }, snapshot(), null, NOW).canCancel, false);
 });

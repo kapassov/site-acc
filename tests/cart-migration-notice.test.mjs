@@ -71,13 +71,14 @@ test('cart clearing does not acknowledge migration, while another-tab acknowledg
   const before=h.values.get(LEGACY);h.storage({key:NOTICE,newValue:'acknowledged'});
   assert.equal(h.view().legacyItemsRemoved,false);assert.equal(h.values.get(LEGACY),before);
 });
-test('logout clears customer cart and rotates its checkout identity',()=>{
+test('logout keeps the browser cart and its checkout identity',()=>{
+  assert.doesNotMatch(readFileSync('src/lib/auth/AuthContext.tsx','utf8'),/ass:logout/);
   const h=harness(new Map([[CURRENT,JSON.stringify([nativeItem])]]));
   const previousId=h.view().cartInstanceId;
   h.logout();
-  assert.deepEqual(h.view().items,[]);
-  assert.equal(h.values.get(CURRENT),'[]');
-  assert.notEqual(h.view().cartInstanceId,previousId);
+  assert.deepEqual(h.view().items,[nativeItem]);
+  assert.equal(h.values.get(CURRENT),JSON.stringify([nativeItem]));
+  assert.equal(h.view().cartInstanceId,previousId);
 });
 test('every material cart or checkout-selection mutation rotates the durable cart identity',()=>{
   const h=harness(new Map([[CURRENT,JSON.stringify([nativeItem])]]));

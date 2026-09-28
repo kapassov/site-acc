@@ -31,7 +31,7 @@ const trackSteps = [
 export default function OrdersPage() {
   const { push } = useToast();
   const { t, plural, lang } = useLang();
-  const { add } = useCart();
+  const { add, setQty, items: cartItems } = useCart();
   const router = useRouter();
   const [f, setF] = useState<"all" | OrderStatus>("all");
   const [reordering, setReordering] = useState<string | null>(null);
@@ -65,7 +65,13 @@ export default function OrdersPage() {
       const available = loaded.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
       if (!available.length && loaded.some((result) => result.status === "rejected")) throw new Error("catalog_unavailable");
       if (!available.length) { push(reorderCopy.unavailable); return; }
-      available.forEach(({ product, quantity }) => add(product, quantity));
+      // Repeating copies products into the cart; it never submits an order.
+      // Repeating the action again must not double quantities already copied.
+      available.forEach(({ product, quantity }) => {
+        const currentQty = cartItems.find((item) => item.product.id === product.id)?.qty ?? 0;
+        if (currentQty === 0) add(product, quantity);
+        else if (currentQty < quantity) setQty(product.id, quantity);
+      });
       if (available.length !== lines.length) push(reorderCopy.partial);
       router.push("/cart");
     } catch {
@@ -102,7 +108,6 @@ export default function OrdersPage() {
                   <span className="grid h-11 w-11 place-items-center rounded-xl bg-slate-50 text-slate-500"><Package className="h-5 w-5" /></span>
                   <div>
                     <Link href={`/account/orders/${encodeURIComponent(o.detailId)}`} className="break-all font-semibold text-slate-900 underline-offset-2 hover:text-brand-700 hover:underline">{o.sourceSystem === "daribar" && o.providerOrderId ? o.providerOrderId : o.id}</Link>
-                    {o.sourceSystem === "daribar" && o.providerOrderId && <p className="text-xs text-slate-400">{o.id}</p>}
                     <p className="text-sm text-slate-500">{o.date} · {o.itemsCount} {plural(o.itemsCount)}</p>
                   </div>
                 </div>

@@ -132,7 +132,7 @@ export default function OrderDetailPage() {
     <div className="space-y-5">
       <Link href="/account/orders" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-brand-700"><ArrowLeft className="h-4 w-4" />{c.back}</Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="font-display text-2xl font-bold text-slate-900">{c.title}</h1><p className="mt-1 break-all text-sm text-slate-500">{order.sourceSystem === "daribar" && order.providerOrderId ? `${order.providerOrderId} · ${order.id}` : order.id} · {order.date}</p></div>
+        <div><h1 className="font-display text-2xl font-bold text-slate-900">{c.title}</h1><p className="mt-1 break-all text-sm text-slate-500">{order.sourceSystem === "daribar" && order.providerOrderId ? order.providerOrderId : order.id} · {order.date}</p></div>
         <span className={cn("rounded-full px-3 py-1 text-sm font-semibold", orderStatusMeta[order.status].className)}>{t(`st.${order.status}`)}</span>
       </div>
 

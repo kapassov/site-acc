@@ -33,7 +33,9 @@ export function availableServiceActions(
   const returnRequest = storedServiceRequest(order, "return");
   const canCancel = order.sourceSystem === "daribar" && Boolean(snapshot) && !locallyCancelled
     && age >= 0 && age <= CANCELLATION_WINDOW_MS
-    && ["created", "new", "placed", "accepted"].includes(providerStatus)
+    // "processing" is normalized to "accepted" by Daribar and may already
+    // mean pharmacy assembly. Only explicitly pre-assembly states are safe.
+    && ["created", "new", "placed"].includes(providerStatus)
     && !cancelRequest && !returnRequest;
   const paid = payment?.paid === true || snapshot?.paid === true
     || String(order.metadata?.payment_status || "").toLowerCase() === "paid";

@@ -211,11 +211,6 @@ export function CartProvider({ children, provider = "medusa" }: { children: Reac
     rotateCartInstance();
   }, [rotateCartInstance]);
 
-  useEffect(() => {
-    window.addEventListener("ass:logout", clear);
-    return () => window.removeEventListener("ass:logout", clear);
-  }, [clear]);
-
   const toggleSelected = useCallback((id: string) => {
     setUnselected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     rotateCartInstance();

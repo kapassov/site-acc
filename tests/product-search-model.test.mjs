@@ -6,6 +6,7 @@ import {
   matchesProductSearchConstraints,
   normalizeProductSearchText,
   parseProductSearchQuery,
+  resolveSourceNamePrefix,
   resolveSourceVowelCorrection,
 } from "../src/lib/search/product-search-model.ts";
 
@@ -24,6 +25,15 @@ test("three confused vowels resolve a unique long source name without stored typ
   assert.equal(resolveSourceVowelCorrection("пороцитамол", source), "парацетамол");
   assert.equal(resolveSourceVowelCorrection("парацетамол", source), null);
   assert.equal(resolveSourceVowelCorrection("парацитомол", source), null, "normal two-edit search owns closer spellings");
+});
+
+test("a partial Daribar name expands only when its leading product name is unique", () => {
+  const tirzetta = product("Тирзетта 2,5 мг раствор");
+  assert.equal(resolveSourceNamePrefix("тирз", [tirzetta]), "тирзетта");
+  assert.equal(resolveSourceNamePrefix("ти", [tirzetta]), null);
+  assert.equal(resolveSourceNamePrefix("тирз", [tirzetta, product("Тирзетта 5 мг раствор")]), "тирзетта");
+  assert.equal(resolveSourceNamePrefix("тирз", [tirzetta, product("Тирзепатид 5 мг раствор")]), null);
+  assert.equal(resolveSourceNamePrefix("тирз", [tirzetta, product("Тирз 5 мг раствор", { inStock: false })]), null);
 });
 
 test("vowel recovery preserves consonants, length, number tokens and explicit name qualifiers", () => {
