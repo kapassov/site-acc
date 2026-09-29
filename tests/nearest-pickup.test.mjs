@@ -165,16 +165,16 @@ test("distance copy uses metres nearby and readable kilometres farther away", ()
   assert.equal(pickupDistanceLabel(150.25), "150 км");
 });
 
-test("checkout requests location only on pickup button click and cancels manual overrides", async () => {
+test("checkout requests location only on the pharmacy-stage button and cancels manual overrides", async () => {
   const page = await readFile(new URL("../src/app/checkout/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /delivery === "pickup" \? \([\s\S]*onClick=\{chooseNearestPickup\}/);
+  assert.match(page, /step === "pharmacy" && <Section[\s\S]*onClick=\{chooseNearestPickup\}/);
   assert.match(page, /copy\.nearest\.choose/);
   assert.match(page, /type="button"\s+onClick=\{chooseNearestPickup\}/);
   assert.match(page, /aria-busy=\{locatingPharmacy\}/);
   assert.match(page, /onClick=\{\(\) => \{ cancelNearestPickup\(\); setMapOpen\(true\); \}\}/);
   assert.match(page, /onPick=\{\(point\) => \{ cancelNearestPickup\(\); setPharmacy\(point\)/);
   assert.match(page, /if \(submitting \|\| locatingPharmacy \|\| nearestRequest.current\) return/);
-  assert.equal((page.match(/disabled=\{checkoutBlocked \|\| timeClosed \|\| submitting \|\| quoteLoading \|\| locatingPharmacy\}/g) || []).length, 2);
+  assert.equal((page.match(/disabled=\{checkoutBlocked \|\| timeClosed \|\| submitting \|\| \(step !== "pharmacy" && quoteLoading\) \|\| locatingPharmacy\}/g) || []).length, 2);
 });
 
 test("nearest choice atomically updates city, source identity and invalidates the previous quote", async () => {

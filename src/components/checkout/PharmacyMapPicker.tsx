@@ -20,7 +20,7 @@ export function PharmacyMapPicker({
   initialIndex: number;
   city: string;
   points: Array<PickupPoint & { total?: number }>;
-  mode?: "pickup" | "courier";
+  mode?: "pickup" | "courier" | "selection";
   onClose: () => void;
   onPick: (p: PickupPoint, index: number) => void;
 }) {
@@ -186,7 +186,7 @@ export function PharmacyMapPicker({
         <div className="border-t border-slate-100 bg-white px-4 py-3 sm:px-6 sm:py-4">
           <button type="button" disabled={!pts[sel] || !selectedVisible} onClick={() => { if (pts[sel] && selectedVisible) { onPick(pts[sel], sel); onClose(); } }}
             className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-bold text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-            <Check className="h-5 w-5 shrink-0" aria-hidden /> <span className="truncate">{mode === "courier" ? copy.confirmCourier : checkoutText(copy.pickHere, { address: pts[sel]?.address ?? "" })}</span>
+            <Check className="h-5 w-5 shrink-0" aria-hidden /> <span className="truncate">{mode === "selection" ? checkoutExtra[lang].pickupOptions.choose : mode === "courier" ? copy.confirmCourier : checkoutText(copy.pickHere, { address: pts[sel]?.address ?? "" })}</span>
           </button>
         </div>
       </div>

@@ -61,6 +61,12 @@ type FormErrorCode = "authRequired" | "requiredFields" | "quoteRequired" | "quot
   | "orderStatusUncertain" | "paymentLinkUnavailable" | "orderAlreadyCreated" | "orderRejected" | "pharmacyClosed";
 type NearestErrorCode = "secureRequired" | "unsupported" | "permissionDenied" | "positionUnavailable" | "timeout" | "invalidPosition" | "lookupUnavailable" | "coordinatesUnavailable";
 type PickupOption = PickupPoint & { total: number };
+type CheckoutStep = "pharmacy" | "delivery" | "payment";
+const checkoutFlow = {
+  ru: { pharmacy: "Выбор аптеки", delivery: "Доставка / самовывоз", payment: "Оплата", next: "Продолжить", choose: "Выберите аптеку, где есть вся корзина", goods: "Товары в этой аптеке", change: "Изменить аптеку", from: "Цена от", paymentFilter: "Показывать аптеки для оплаты", promo: "Промокод", promoUnavailable: "Промокоды пока не подключены к итоговой сумме заказа; скидка не применяется." },
+  kz: { pharmacy: "Дәріхананы таңдау", delivery: "Жеткізу / алып кету", payment: "Төлем", next: "Жалғастыру", choose: "Себеттегі барлық тауар бар дәріхананы таңдаңыз", goods: "Осы дәріханадағы тауарлар", change: "Дәріхананы өзгерту", from: "Бағасы бастап", paymentFilter: "Төлем бойынша дәріханалар", promo: "Промокод", promoUnavailable: "Промокодтар тапсырыстың соңғы сомасына әлі қосылмаған; жеңілдік қолданылмайды." },
+  en: { pharmacy: "Choose pharmacy", delivery: "Delivery / pickup", payment: "Payment", next: "Continue", choose: "Choose a pharmacy with your full basket in stock", goods: "Products at this pharmacy", change: "Change pharmacy", from: "From", paymentFilter: "Show pharmacies accepting", promo: "Promo code", promoUnavailable: "Promo codes are not connected to the final order amount yet; no discount is applied." },
+} as const;
 
 function isPickupOption(value: unknown): value is PickupOption {
   return isMedusaPickupPoint(value)
@@ -115,6 +121,7 @@ export default function CheckoutPage() {
   const { t, plural, lang } = useLang();
   const { city, setCity, ready: citySelectionReady, needsSelection } = useCity();
   const copy = checkoutExtra[lang];
+  const flow = checkoutFlow[lang];
   const { sendEvent } = usePush();
   const isDemo = user?.demo === true;
 
@@ -125,7 +132,9 @@ export default function CheckoutPage() {
     en: "Your basket contains a prescription medicine. Only pharmacy pickup and cash payment are available. Bring a valid prescription when collecting it.",
   }[lang];
   const [selectedDelivery, setDelivery] = useState<"courier" | "pickup" | "post">("courier");
-  const [courierMode, setCourierMode] = useState<"city" | "pharmacy">("city");
+  // A pharmacy is chosen before fulfilment; courier quotes must keep it fixed.
+  const courierMode = "pharmacy" as const;
+  const [step, setStep] = useState<CheckoutStep>("pharmacy");
   const [selectedPayment, setPayment] = useState<"card" | "cash">("card");
   const delivery = hasPrescription ? "pickup" : selectedDelivery;
   const payment = hasPrescription ? "cash" : selectedPayment;
@@ -147,6 +156,7 @@ export default function CheckoutPage() {
   const [nameInput, setNameInput] = useState("");
   const [addr, setAddr] = useState("");
   const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails>(() => ({ ...EMPTY_DELIVERY_DETAILS }));
+  const [pickupComment, setPickupComment] = useState("");
   const [livePharmacies, setLivePharmacies] = useState<{ key: string; city: string; points: PickupOption[] } | null>(null);
   const [pickupOptionsLoading, setPickupOptionsLoading] = useState(false);
   const [pickupOptionsError, setPickupOptionsError] = useState(false);
@@ -164,8 +174,22 @@ export default function CheckoutPage() {
   const cityRef = useRef<HTMLSelectElement>(null);
   const addressRef = useRef<HTMLInputElement>(null);
   const pharmacyRef = useRef<HTMLDivElement>(null);
-  const commentRef = useRef<HTMLTextAreaElement>(null);
   const addressPrefilledForPhone = useRef("");
+
+  const moveToStep = (next: CheckoutStep) => {
+    setStep(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", next);
+    window.history.pushState({ checkoutStep: next }, "", url);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    // A direct/refresh visit cannot reuse an unverified browser-only pharmacy price.
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", "pharmacy");
+    window.history.replaceState({ checkoutStep: "pharmacy" }, "", url);
+  }, []);
 
   useEffect(() => {
     if (!user) { addressPrefilledForPhone.current = ""; return; }
@@ -211,8 +235,16 @@ export default function CheckoutPage() {
   const fulfillment = delivery === "pickup" ? "pickup" : "pharmacy";
 
   useEffect(() => {
-    if ((delivery !== "pickup" && !(delivery === "courier" && courierMode === "pharmacy"))
-        || !citySelectionReady || needsSelection || !normalizedCity || !pickupItems.length || loadedPharmacyKey === pickupKey) return;
+    const onBack = () => {
+      const requested = new URLSearchParams(window.location.search).get("step");
+      setStep(selectedPharmacy && (requested === "delivery" || requested === "payment") ? requested : "pharmacy");
+    };
+    window.addEventListener("popstate", onBack);
+    return () => window.removeEventListener("popstate", onBack);
+  }, [selectedPharmacy]);
+
+  useEffect(() => {
+    if (!citySelectionReady || needsSelection || !normalizedCity || !pickupItems.length || loadedPharmacyKey === pickupKey) return;
     const controller = new AbortController();
     pharmacyListRequest.current = controller;
     const timer = window.setTimeout(() => {
@@ -254,7 +286,7 @@ export default function CheckoutPage() {
       controller.abort();
       if (pharmacyListRequest.current === controller) pharmacyListRequest.current = null;
     };
-  }, [delivery, courierMode, citySelectionReady, needsSelection, normalizedCity, pickupItems, pickupKey, loadedPharmacyKey, effectivePaymentMethod]);
+  }, [citySelectionReady, needsSelection, normalizedCity, pickupItems, pickupKey, loadedPharmacyKey, effectivePaymentMethod]);
 
   useEffect(() => () => {
     nearestRequest.current?.abort();
@@ -286,8 +318,8 @@ export default function CheckoutPage() {
   /* eslint-disable react-hooks/set-state-in-effect -- network quote state is intentionally reset when cart/fulfillment changes */
   useEffect(() => {
     const deliveryAddressReady = addr.trim().length > 0 && /\d/.test(addr);
-    if (!citySelectionReady || needsSelection || !pickupItems.length
-        || ((delivery === "pickup" || (delivery === "courier" && courierMode === "pharmacy")) && !selectedPharmacy)
+    if (step === "pharmacy" || !citySelectionReady || needsSelection || !pickupItems.length
+        || !selectedPharmacy
         || (delivery === "courier" && !deliveryAddressReady)) {
       setQuote(null);
       setQuoteLoading(false);
@@ -302,7 +334,7 @@ export default function CheckoutPage() {
         items: pickupItems,
         fulfillment,
         paymentMethod: effectivePaymentMethod,
-        preferredPharmacy: (delivery === "pickup" || courierMode === "pharmacy") && selectedPharmacy ? {
+        preferredPharmacy: selectedPharmacy ? {
           id: selectedPharmacy.sourceCode,
           sourceCode: selectedPharmacy.sourceCode,
           address: selectedPharmacy.address,
@@ -313,12 +345,26 @@ export default function CheckoutPage() {
             mode: courierMode,
             city: normalizedCity,
             address: addr,
-            ...(courierMode === "pharmacy" ? { pharmacyId: selectedPharmacy?.sourceCode } : {}),
+            pharmacyId: selectedPharmacy?.sourceCode,
           },
         } : {}),
       }, controller.signal)
       .then((nextQuote) => {
-        if (!controller.signal.aborted) setQuote(nextQuote);
+        if (controller.signal.aborted) return;
+        if (nextQuote.pharmacy?.id !== selectedPharmacy.sourceCode
+            || Math.abs(nextQuote.subtotal - selectedPharmacy.total) >= 1) {
+          setQuote(null);
+          setQuoteError("quote_snapshot_changed");
+          setLivePharmacies(null);
+          setPharmacy(null);
+          setFormError("quoteChanged");
+          setStep("pharmacy");
+          const url = new URL(window.location.href);
+          url.searchParams.set("step", "pharmacy");
+          window.history.replaceState({ checkoutStep: "pharmacy" }, "", url);
+          return;
+        }
+        setQuote(nextQuote);
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
@@ -329,7 +375,7 @@ export default function CheckoutPage() {
         if (!controller.signal.aborted) setQuoteLoading(false);
       }), 450);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [citySelectionReady, needsSelection, pickupItems, delivery, courierMode, fulfillment, effectivePaymentMethod, selectedPharmacy, normalizedCity, addr, quoteRefresh, user?.phone]);
+  }, [step, citySelectionReady, needsSelection, pickupItems, delivery, courierMode, fulfillment, effectivePaymentMethod, selectedPharmacy, normalizedCity, addr, quoteRefresh, user?.phone]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -352,19 +398,18 @@ export default function CheckoutPage() {
   }
 
   const quotedFallback = selectedSubtotal;
-  const goods = quote?.subtotal ?? quotedFallback;
+  const goods = quote?.subtotal ?? selectedPharmacy?.total ?? quotedFallback;
   const pricedQuote = quote;
   // A pickup row already displays its exact pharmacy total before selection,
   // so that click is the customer's explicit price choice. Courier pricing is
   // selected automatically and therefore needs a separate acknowledgement.
-  const priceChanged = delivery === "courier"
-    && Boolean(pricedQuote && Math.abs(goods - selectedSubtotal) >= 1);
+  const priceChanged = Boolean(pricedQuote && selectedPharmacy && Math.abs(goods - selectedPharmacy.total) >= 1);
   const priceSignature = priceChanged && pricedQuote
     ? `${selectedSubtotal}:${goods}:${pricedQuote.pharmacy?.id || "unknown"}`
     : "";
   const priceAccepted = !priceSignature || acceptedPriceSignature === priceSignature;
   const balance = user?.bonus ?? 0;
-  const total = quote?.total ?? goods;
+  const total = quote?.total ?? selectedPharmacy?.total ?? goods;
   const quoteIssue = quoteError;
   // Умный поиск адреса: подсказки улиц Алматы по мере ввода (до первой цифры — номера дома).
   const addrQuery = addr.trim().toLowerCase();
@@ -445,7 +490,7 @@ export default function CheckoutPage() {
   const formErrorText = formError ? copy.formError[formError] : "";
   const nearestErrorText = nearestError ? copy.nearest[nearestError] : "";
   const pickupOptionsReady = loadedPharmacyKey === pickupKey && !pickupOptionsLoading;
-  const previousPharmacyUnavailable = delivery === "pickup" && Boolean(pharmacy) && pickupOptionsReady && !selectedPharmacy;
+  const previousPharmacyUnavailable = Boolean(pharmacy) && pickupOptionsReady && !selectedPharmacy;
   const localizedFieldError = (field: CheckoutField): string | undefined => {
     if (!fieldErrors[field]) return undefined;
     if (field === "address" && addr.trim() && !/\d/.test(addr)) return copy.validation.houseNumber;
@@ -475,7 +520,7 @@ export default function CheckoutPage() {
   };
 
   const chooseNearestPickup = async () => {
-    if (nearestRequest.current || submitting || delivery !== "pickup") return;
+    if (nearestRequest.current || submitting) return;
     setNearestError(null);
     setNearestDistance(null);
     if (!window.isSecureContext) {
@@ -538,6 +583,15 @@ export default function CheckoutPage() {
     e.preventDefault();
     if (submitting || locatingPharmacy || nearestRequest.current) return;
     setFormError(null);
+    if (step === "pharmacy") {
+      if (!selectedPharmacy) {
+        setFieldErrors({ pharmacy: "required" });
+        pharmacyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      moveToStep("delivery");
+      return;
+    }
     if (timeClosed) {
       setFormError("pharmacyClosed");
       push(copy.formError.pharmacyClosed);
@@ -570,6 +624,10 @@ export default function CheckoutPage() {
     if (firstError) {
       setFormError("requiredFields");
       push(copy.formError.requiredFields);
+      if (step === "payment") {
+        moveToStep("delivery");
+        return;
+      }
       const target = firstError === "name" ? nameRef.current
         : firstError === "phone" ? phoneRef.current
           : firstError === "city" ? cityRef.current
@@ -577,6 +635,15 @@ export default function CheckoutPage() {
               : pharmacyRef.current;
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
       if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) target.focus();
+      return;
+    }
+    if (step === "delivery") {
+      if (!quote || quoteLoading || quoteError) {
+        setFormError("quoteRequired");
+        if (!quoteLoading) setQuoteRefresh((value) => value + 1);
+        return;
+      }
+      moveToStep("payment");
       return;
     }
     const phoneDigits = phoneValue.replace(/\D/g, "");
@@ -610,7 +677,7 @@ export default function CheckoutPage() {
         pharmacyId: quote.pharmacy?.id,
         pharmacyName: quote.pharmacy?.name,
         pharmacyAddress: quote.pharmacy?.address,
-        comment: delivery === "pickup" ? commentRef.current?.value || "" : "",
+        comment: delivery === "pickup" ? pickupComment : "",
         ...(delivery === "courier" ? { deliveryDetails } : {}),
         cartInstanceId,
         cartItems: pickupItems,
@@ -635,9 +702,11 @@ export default function CheckoutPage() {
       if (error instanceof Error && error.message === "payment_redirect") return;
       if (error instanceof Error && /^(?:quote_(?:invalid_or_expired|required|snapshot_changed|stock_or_price_changed|items_mismatch|city_mismatch)|no_pharmacy_can_fulfill_cart|stale_source_snapshot|validated_snapshot_unavailable)$/.test(error.message)) {
         setQuote(null);
+        setLivePharmacies(null);
         setQuoteRefresh((value) => value + 1);
         setFormError("quoteChanged");
         push(copy.formError.quoteRefreshing);
+        moveToStep("pharmacy");
       } else if (error instanceof Error && ["order_status_uncertain", "checkout_attempt_conflict"].includes(error.message)) {
         setFormError("orderStatusUncertain");
         push(copy.formError.orderStatusUncertain);
@@ -675,14 +744,13 @@ export default function CheckoutPage() {
       className="relative z-0 mx-auto min-h-screen max-w-5xl px-3 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-0 sm:px-6 lg:pb-12 before:fixed before:inset-0 before:-z-10 before:bg-slate-50"
     >
       <div className="-mx-3 flex min-h-16 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:-mx-6 md:mb-10 md:px-6">
-        <Link href="/cart" aria-label={copy.navigation.backToCart} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-700 active:bg-slate-100">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
+        {step === "pharmacy" ? <Link href="/cart" aria-label={copy.navigation.backToCart} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-700 active:bg-slate-100"><ArrowLeft className="h-5 w-5" /></Link>
+          : <button type="button" onClick={() => moveToStep(step === "payment" ? "delivery" : "pharmacy")} aria-label={copy.navigation.back} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-700 active:bg-slate-100"><ArrowLeft className="h-5 w-5" /></button>}
         <span className="font-semibold text-slate-800">{copy.navigation.back}</span>
       </div>
       <div className="mt-5 md:mt-0">
         <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-900 md:text-3xl">{t("co.title")}</h1>
-        <CheckoutProgress copy={copy.progress} />
+        <CheckoutProgress copy={copy.progress} step={step} labels={[flow.pharmacy, flow.delivery, flow.payment]} />
       </div>
       {legacyItemsRemoved && (
         <div role="status" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -718,7 +786,7 @@ export default function CheckoutPage() {
       <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_350px] lg:items-start">
         <div className="min-w-0 space-y-5">
           {hasPrescription && <p role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{prescriptionNotice}</p>}
-          <div className="lg:hidden">
+          {step === "delivery" && <div className="lg:hidden">
             <Section title={t("co.s1")}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field id="checkout-name" label={copy.field.recipientName} required error={localizedFieldError("name")}>
@@ -745,158 +813,61 @@ export default function CheckoutPage() {
                 </Field>
               </div>
             </Section>
-          </div>
+          </div>}
 
-          <Section title={t("co.s2")} desktopTitle={copy.section.delivery}>
+          {step === "pharmacy" && <Section title={flow.pharmacy}>
+            <p className="mb-4 text-sm text-slate-600">{flow.choose}</p>
+            {!isDemo && !hasPrescription && <div className="mb-4">
+              <p className="mb-2 text-sm font-semibold text-slate-700">{flow.paymentFilter}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <RadioCard active={payment === "card"} onClick={() => { if (payment !== "card") { setPayment("card"); setPharmacy(null); setQuote(null); } }} icon={<CreditCard className="h-5 w-5" />} title={t("co.card")} text={t("co.card.s")} />
+                <RadioCard active={payment === "cash"} onClick={() => { if (payment !== "cash") { setPayment("cash"); setPharmacy(null); setQuote(null); } }} icon={<Wallet className="h-5 w-5" />} title={t("co.cash")} text={t("co.cash.s")} />
+              </div>
+            </div>}
+            <Field id="checkout-city" label={copy.field.city} required error={localizedFieldError("city")}>
+              <select id="checkout-city" ref={cityRef} value={city} onChange={(event) => { cancelNearestPickup(); setCity(event.target.value); setPharmacy(null); setLivePharmacies(null); setQuote(null); clearFieldError("city"); }} className={inputCls}>
+                {CITIES.map((choice) => <option key={choice} value={choice}>{cityDisplayName(choice, lang)}</option>)}
+              </select>
+            </Field>
+            <div ref={pharmacyRef} className="mt-4 space-y-3 scroll-mt-24">
+              <button type="button" onClick={chooseNearestPickup} disabled={locatingPharmacy || pickupOptionsLoading || submitting} aria-busy={locatingPharmacy} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 text-sm font-semibold text-brand-800 disabled:opacity-60">
+                {locatingPharmacy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}{copy.nearest.choose}
+              </button>
+              {nearestErrorText && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{nearestErrorText}</p>}
+              {nearestDistance !== null && <p role="status" className="text-xs text-brand-800">{checkoutText(copy.nearest.selected, { distance: checkoutDistance(nearestDistance, lang), city: cityDisplayName(city, lang) })}</p>}
+              {previousPharmacyUnavailable && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{copy.pickupOptions.unavailable}</p>}
+              {pickupOptionsLoading && <p role="status" className="text-sm text-slate-600">{copy.pickupOptions.loading}</p>}
+              {pickupOptionsError && <button type="button" onClick={() => { setLivePharmacies(null); setPickupOptionsError(false); }} className="text-sm font-semibold text-amber-800 underline">{copy.pickupOptions.failed}</button>}
+              {pickupOptionsReady && !pickupOptionsError && cityPharmacies.length === 0 && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{copy.pickupOptions.empty}</p>}
+              {cityPharmacies.length > 0 && <div className="max-h-[32rem] space-y-2 overflow-y-auto overscroll-contain" role="radiogroup" aria-label={copy.pickupOptions.title}>
+                {cityPharmacies.map((point) => {
+                  const active = selectedPharmacy?.sourceCode === point.sourceCode;
+                  return <button key={point.sourceCode} type="button" role="radio" aria-checked={active} onClick={() => { cancelNearestPickup(); setPharmacy(point); setQuote(null); setQuoteError(""); clearFieldError("pharmacy"); }} className={cn("flex min-h-18 w-full items-center gap-3 rounded-xl border p-3 text-left transition", active ? "border-brand-500 bg-brand-50 ring-1 ring-brand-500" : "border-slate-200 hover:border-brand-300")}>
+                    <Store className={cn("h-5 w-5 shrink-0", active ? "text-brand-700" : "text-slate-400")} />
+                    <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-slate-900">{point.address}</span><span className="block text-xs text-slate-500">{point.hours}</span></span>
+                    <span className="shrink-0 text-right"><span className="block text-sm font-bold text-slate-900">{tenge(point.total)}</span><span className="block text-xs text-slate-500">{flow.goods}</span></span>
+                  </button>;
+                })}
+              </div>}
+              <button type="button" onClick={() => { cancelNearestPickup(); setMapOpen(true); }} aria-haspopup="dialog" disabled={!cityPharmacies.length || pickupOptionsLoading} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-500 px-3 text-sm font-semibold text-brand-700 disabled:border-slate-200 disabled:text-slate-400"><MapPin className="h-4 w-4" />{copy.nearest.chooseOnMap}</button>
+              <button type="button" onClick={() => { setLivePharmacies(null); setQuote(null); setQuoteError(""); setFormError(null); }} disabled={pickupOptionsLoading} className="min-h-10 text-sm font-semibold text-brand-700 underline disabled:opacity-50">{copy.availability.retry}</button>
+              {localizedFieldError("pharmacy") && <p role="alert" className="text-xs font-semibold text-rose-600">{localizedFieldError("pharmacy")}</p>}
+            </div>
+          </Section>}
+
+          {step === "delivery" && <Section title={t("co.s2")} desktopTitle={copy.section.delivery}>
             <div className="grid gap-3 sm:grid-cols-2">
               {!hasPrescription && <RadioCard active={delivery === "courier"} onClick={() => { cancelNearestPickup(); setDelivery("courier"); clearFieldError("pharmacy"); }} icon={<Truck className="h-5 w-5" />} title={t("co.courier")} text={t("co.courier.s")} />}
               <RadioCard active={delivery === "pickup"} onClick={() => { cancelNearestPickup(); setDelivery("pickup"); clearFieldError("address"); }} icon={<Store className="h-5 w-5" />} title={t("co.pickup")} text={t("co.pickup.s")} />
             </div>
             <div className={cn("mt-3 space-y-2", delivery === "courier" && "rounded-2xl border border-slate-200 bg-slate-50/50 p-3 sm:p-4")}>
               {delivery === "courier" && <h3 className="font-display text-base font-bold text-slate-900">{copy.deliveryDetails.title}</h3>}
-              <Field id="checkout-city" label={copy.field.city} required error={localizedFieldError("city")}>
-                <select id="checkout-city" ref={cityRef} value={city} onChange={(e) => { cancelNearestPickup(); setCity(e.target.value); setPharmacy(null); setLivePharmacies(null); setQuote(null); clearFieldError("city"); }} autoComplete="address-level2" aria-invalid={Boolean(fieldErrors.city)} aria-describedby={fieldErrors.city ? "checkout-city-error" : undefined} className={cn(inputCls, fieldErrors.city && "border-rose-400 bg-rose-50/40 ring-2 ring-rose-100 focus:border-rose-500 focus:ring-rose-100")}>
-                  {CITIES.map((choice) => <option key={choice} value={choice}>{cityDisplayName(choice, lang)}</option>)}
-                </select>
-              </Field>
-              {delivery === "courier" && (
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-slate-800">{copy.deliveryChoice.modeTitle}</p>
-                  <div role="group" aria-label={copy.deliveryChoice.modeTitle} className="grid gap-2 sm:grid-cols-2">
-                    {(["city", "pharmacy"] as const).map((mode) => (
-                      <button key={mode} type="button" aria-pressed={courierMode === mode}
-                        onClick={() => { setCourierMode(mode); setQuote(null); setQuoteError(""); clearFieldError("pharmacy"); }}
-                        className={cn("min-h-20 rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
-                          courierMode === mode ? "border-brand-500 bg-brand-50 text-brand-900" : "border-slate-200 bg-white text-slate-800 hover:border-brand-300")}>
-                        <span className="block text-sm font-bold">{mode === "city" ? copy.deliveryChoice.cityMode : copy.deliveryChoice.pharmacyMode}</span>
-                        <span className="mt-1 block text-xs leading-4 text-slate-600">{mode === "city" ? copy.deliveryChoice.cityModeHint : copy.deliveryChoice.pharmacyModeHint}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {courierMode === "pharmacy" && (
-                    <div ref={pharmacyRef} className="space-y-2 scroll-mt-24">
-                      <Field id="checkout-courier-pharmacy" label={copy.deliveryChoice.pharmacyLabel} required error={localizedFieldError("pharmacy")}>
-                        <button id="checkout-courier-pharmacy" type="button" onClick={() => setMapOpen(true)}
-                          disabled={pickupOptionsLoading || pickupOptionsError || cityPharmacies.length === 0}
-                          aria-haspopup="dialog"
-                          aria-describedby={fieldErrors.pharmacy ? "checkout-courier-pharmacy-error" : undefined}
-                          className={cn("flex min-h-16 w-full items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-60", selectedPharmacy ? "border-brand-500 bg-brand-50/50" : "border-slate-200 hover:border-brand-300", fieldErrors.pharmacy && "border-rose-400 bg-rose-50/40")}>
-                          <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", selectedPharmacy ? "bg-brand-600 text-white" : "bg-brand-50 text-brand-700")}><Store className="h-5 w-5" aria-hidden /></span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold text-slate-900">{selectedPharmacy?.address || copy.deliveryChoice.pharmacyPlaceholder}</span>
-                            {selectedPharmacy && <span className="mt-0.5 block text-xs text-slate-600">{selectedPharmacy.hours} · {tenge(selectedPharmacy.total)}</span>}
-                          </span>
-                          <MapPin className="h-5 w-5 shrink-0 text-brand-700" aria-hidden />
-                        </button>
-                      </Field>
-                      {pickupOptionsLoading && <p role="status" className="text-xs text-slate-600">{copy.deliveryChoice.pharmacyLoading}</p>}
-                      {pickupOptionsError && <button type="button" onClick={() => { setLivePharmacies(null); setPickupOptionsError(false); }}
-                        className="text-left text-xs font-semibold text-amber-800 underline">{copy.deliveryChoice.pharmacyRetry}</button>}
-                      {pickupOptionsReady && !pickupOptionsError && cityPharmacies.length === 0 &&
-                        <p role="status" className="text-xs text-amber-800">{copy.deliveryChoice.pharmacyEmpty}</p>}
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm">
+                <span className="min-w-0"><span className="block font-semibold text-slate-900">{selectedPharmacy?.address || copy.pickupOptions.noSelection}</span><span className="block text-xs text-slate-600">{flow.goods}: {selectedPharmacy ? tenge(selectedPharmacy.total) : "—"}</span></span>
+                <button type="button" onClick={() => moveToStep("pharmacy")} className="shrink-0 font-semibold text-brand-700 underline">{flow.change}</button>
+              </div>
               {delivery === "pickup" ? (
-                <div ref={pharmacyRef} className="space-y-2 scroll-mt-24">
-                  <button
-                    type="button"
-                    onClick={chooseNearestPickup}
-                    disabled={locatingPharmacy || submitting}
-                    aria-busy={locatingPharmacy}
-                    aria-describedby="pickup-location-status"
-                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2.5 text-sm font-semibold leading-5 text-brand-800 transition hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
-                  >
-                    {locatingPharmacy
-                      ? <LoaderCircle className="h-5 w-5 shrink-0 motion-safe:animate-spin" aria-hidden />
-                      : <LocateFixed className="h-5 w-5 shrink-0" aria-hidden />}
-                    <span>{nearestStatus === "locating" ? copy.nearest.locating : nearestStatus === "loading" ? copy.nearest.loading : copy.nearest.choose}</span>
-                  </button>
-                  <p
-                    id="pickup-location-status"
-                    role={nearestError ? "alert" : "status"}
-                    aria-atomic="true"
-                    className={cn("text-xs leading-5", nearestError ? "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900" : "px-0.5 text-slate-500")}
-                  >
-                    {nearestErrorText || (nearestStatus === "locating"
-                      ? copy.nearest.permissionHint
-                      : nearestStatus === "loading"
-                        ? copy.nearest.comparing
-                        : nearestDistance !== null
-                          ? checkoutText(copy.nearest.selected, { distance: checkoutDistance(nearestDistance, lang), city: cityDisplayName(city, lang) })
-                          : copy.nearest.idleHint)}
-                  </p>
-                  <div className={cn(
-                    "flex items-center gap-3 rounded-xl border p-3",
-                    fieldErrors.pharmacy
-                      ? "border-rose-400 bg-rose-50/40 ring-2 ring-rose-100"
-                      : previousPharmacyUnavailable
-                        ? "border-amber-300 bg-amber-50"
-                        : selectedPharmacy
-                          ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500"
-                          : "border-slate-200 bg-white",
-                  )}>
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600"><Store className="h-5 w-5" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold text-slate-900">{selectedPharmacy?.address ?? copy.pickupOptions.noSelection}</span>
-                      <span className={cn("block text-xs", previousPharmacyUnavailable ? "text-amber-800" : "text-slate-500")}>
-                        {previousPharmacyUnavailable ? copy.pickupOptions.unavailable : selectedPharmacy?.hours ?? ""}
-                      </span>
-                    </span>
-                  </div>
-                  {pickupOptionsLoading ? (
-                    <p role="status" className="rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">{copy.pickupOptions.loading}</p>
-                  ) : pickupOptionsError ? (
-                    <button type="button" onClick={() => { setLivePharmacies(null); setPickupOptionsError(false); }}
-                      className="min-h-11 w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-left text-sm font-medium text-amber-900">
-                      {copy.pickupOptions.failed}
-                    </button>
-                  ) : pickupOptionsReady && cityPharmacies.length === 0 ? (
-                    <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">{copy.pickupOptions.empty}</p>
-                  ) : cityPharmacies.length > 0 ? (
-                    <div className="rounded-xl border border-slate-200 bg-white p-2">
-                      <p className="px-2 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{copy.pickupOptions.title}</p>
-                      <div className="max-h-64 space-y-1 overflow-y-auto overscroll-contain">
-                        {cityPharmacies.slice(0, 3).map((point) => {
-                          const active = selectedPharmacy?.sourceCode === point.sourceCode;
-                          return (
-                            <button key={point.sourceCode} type="button" onClick={() => {
-                              cancelNearestPickup();
-                              setPharmacy(point);
-                              setQuote(null);
-                              setQuoteError("");
-                              clearFieldError("pharmacy");
-                            }} className={cn(
-                              "flex min-h-14 w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
-                              active ? "bg-brand-50" : "hover:bg-slate-50",
-                            )}>
-                              <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500")}>
-                                {active ? <CheckCircle2 className="h-5 w-5" /> : <Store className="h-5 w-5" />}
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-sm font-semibold text-slate-900">{point.address}</span>
-                                <span className="block text-xs text-slate-500">{point.hours}</span>
-                              </span>
-                              <span className="shrink-0 text-right">
-                                <span className="block text-sm font-bold text-slate-900">{tenge(point.total)}</span>
-                                <span className={cn("block text-xs font-semibold", active ? "text-brand-700" : "text-slate-500")}>
-                                  {active ? copy.pickupOptions.selected : copy.pickupOptions.choose}
-                                </span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                  <button type="button" onClick={() => { cancelNearestPickup(); setMapOpen(true); }}
-                    disabled={cityPharmacies.length === 0 || pickupOptionsLoading}
-                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-500 px-3 py-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:hover:bg-white">
-                    <MapPin className="h-5 w-5 shrink-0" aria-hidden /> {copy.nearest.chooseOnMap}
-                  </button>
-                  {localizedFieldError("pharmacy") && <p role="alert" className="text-xs font-semibold text-rose-600">{localizedFieldError("pharmacy")}</p>}
-                </div>
+                <p className="text-xs text-slate-600">{selectedPharmacy?.hours}</p>
               ) : (
                 <>
                   <CourierDeliveryFields
@@ -923,7 +894,7 @@ export default function CheckoutPage() {
                     loading={quoteLoading}
                     error={Boolean(quoteError)}
                     errorText={quoteErrorText}
-                    catalogueSubtotal={selectedSubtotal}
+                    catalogueSubtotal={selectedPharmacy?.total ?? selectedSubtotal}
                     priceAccepted={priceAccepted}
                     onAcceptPrice={() => setAcceptedPriceSignature(priceSignature)}
                     onRetry={() => setQuoteRefresh((value) => value + 1)}
@@ -931,7 +902,13 @@ export default function CheckoutPage() {
                 </>
               )}
             </div>
-          </Section>
+          </Section>}
+
+          {step === "delivery" && <Section title={flow.promo}>
+            <label htmlFor="checkout-promo" className="block text-sm font-semibold text-slate-700">{flow.promo}</label>
+            <input id="checkout-promo" type="text" disabled placeholder={flow.promo} className={cn(inputCls, "mt-2 cursor-not-allowed bg-slate-100 text-slate-500")} />
+            <p role="note" className="mt-2 text-xs text-amber-800">{flow.promoUnavailable}</p>
+          </Section>}
 
           {addressMapOpen && <DeliveryAddressMapPicker
             city={city}
@@ -945,19 +922,19 @@ export default function CheckoutPage() {
             city={city}
             points={cityPharmacies}
             initialIndex={pharmIdx}
-            mode={delivery === "courier" && courierMode === "pharmacy" ? "courier" : "pickup"}
+            mode={step === "pharmacy" ? "selection" : delivery === "courier" ? "courier" : "pickup"}
             onClose={() => setMapOpen(false)}
             onPick={(point) => { cancelNearestPickup(); setPharmacy(point); setQuote(null); setQuoteError(""); clearFieldError("pharmacy"); }}
           />}
 
-          <Section title={t("co.s3")} desktopTitle={copy.section.payment}>
+          {step === "payment" && <Section title={t("co.s3")} desktopTitle={copy.section.payment}>
             <div className="grid gap-3 sm:grid-cols-2">
               {!isDemo && !hasPrescription && (
-                <RadioCard active={payment === "card"} onClick={() => setPayment("card")} icon={<CreditCard className="h-5 w-5" />} title={t("co.card")} text={t("co.card.s")} />
+                <RadioCard active={payment === "card"} onClick={() => { if (payment !== "card") { setPayment("card"); moveToStep("pharmacy"); } }} icon={<CreditCard className="h-5 w-5" />} title={t("co.card")} text={t("co.card.s")} />
               )}
               <RadioCard
                 active={isDemo || payment === "cash"}
-                onClick={() => setPayment("cash")}
+                onClick={() => { if (!isDemo && !hasPrescription && payment !== "cash") { setPayment("cash"); moveToStep("pharmacy"); } }}
                 icon={<Wallet className="h-5 w-5" />}
                 title={isDemo ? copy.payment.demoTitle : t("co.cash")}
                 text={isDemo ? copy.payment.demoText : t("co.cash.s")}
@@ -968,11 +945,18 @@ export default function CheckoutPage() {
                 {copy.payment.providerHint}
               </p>
             )}
-          </Section>
+          </Section>}
 
-          {delivery === "pickup" && (
+          {step === "payment" && <Section title={flow.delivery}>
+            <p className="text-sm font-semibold text-slate-900">{selectedPharmacy?.address || copy.pickupOptions.noSelection}</p>
+            <p className="mt-1 text-sm text-slate-600">{delivery === "pickup" ? t("co.pickup") : `${t("co.courier")} · ${addr}`}</p>
+            <p className="mt-2 text-sm font-semibold text-brand-700">{flow.goods}: {tenge(selectedPharmacy?.total ?? goods)}</p>
+            <button type="button" onClick={() => moveToStep("delivery")} className="mt-3 text-sm font-semibold text-brand-700 underline">{copy.navigation.back}</button>
+          </Section>}
+
+          {step === "delivery" && delivery === "pickup" && (
             <Section title={t("co.s4")} desktopTitle={copy.section.comment}>
-              <textarea ref={commentRef} rows={3} maxLength={500} placeholder={t("co.comment")} className={cn(inputCls, "h-auto py-3")} />
+              <textarea value={pickupComment} onChange={(event) => setPickupComment(event.currentTarget.value)} rows={3} maxLength={500} placeholder={t("co.comment")} className={cn(inputCls, "h-auto py-3")} />
             </Section>
           )}
         </div>
@@ -999,14 +983,17 @@ export default function CheckoutPage() {
                     ? copy.availability.checking
                     : quote
                       ? copy.availability.confirmed
+                      : step === "pharmacy" && selectedPharmacy
+                        ? copy.availability.confirmed
                       : quoteIssue
                         ? copy.availability.failed
-                        : copy.availability.confirming}
+                        : step === "pharmacy" ? copy.pickupOptions.noSelection : copy.availability.confirming}
                 </p>
                 <p className="mt-0.5 text-xs opacity-75">
                   {quote
                     ? delivery === "pickup" ? copy.availability.pickupReady : copy.availability.deliveryReady
-                    : quoteLoading ? copy.availability.comparing : copy.availability.preflight}
+                    : step === "pharmacy" && selectedPharmacy ? selectedPharmacy.address
+                      : quoteLoading ? copy.availability.comparing : copy.availability.preflight}
                 </p>
               </div>
               {(quote?.lines?.length ?? 0) > 0 && (
@@ -1042,7 +1029,7 @@ export default function CheckoutPage() {
                 )}
               </dl>
               <div className="mt-4 flex items-end justify-between border-t border-slate-100 pt-4">
-                <span className="text-slate-600">{t("sum.total")}</span>
+                <span className="text-slate-600">{step === "pharmacy" && !selectedPharmacy ? flow.from : t("sum.total")}</span>
                 <span className="font-display text-2xl font-extrabold text-slate-900">{tenge(total)}</span>
               </div>
               {quoteLoading && <p className="mt-2 text-xs text-slate-500">{copy.availability.checkingPrices}</p>}
@@ -1053,9 +1040,9 @@ export default function CheckoutPage() {
                   <button type="button" onClick={() => setQuoteRefresh((value) => value + 1)} className="mt-2 font-semibold underline underline-offset-2">{copy.availability.retry}</button>
                 </div>
               )}
-              <button type="submit" disabled={checkoutBlocked || timeClosed || submitting || quoteLoading || locatingPharmacy} className={cn("mt-5 hidden h-12 w-full rounded-xl font-semibold text-white transition lg:block", formActionable ? "bg-brand-600 hover:bg-brand-700" : "bg-brand-600 hover:bg-brand-700", "disabled:cursor-wait disabled:opacity-60")}>{mobileAction}</button>
+              <button type="submit" disabled={checkoutBlocked || timeClosed || submitting || (step !== "pharmacy" && quoteLoading) || locatingPharmacy} className={cn("mt-5 hidden h-12 w-full rounded-xl font-semibold text-white transition lg:block", formActionable ? "bg-brand-600 hover:bg-brand-700" : "bg-brand-600 hover:bg-brand-700", "disabled:cursor-wait disabled:opacity-60")}>{step === "payment" ? mobileAction : flow.next}</button>
             </div>
-            <p className="px-2 text-center text-xs text-slate-400">{t("co.consent")}</p>
+            {step === "payment" && <p className="px-2 text-center text-xs text-slate-400">{t("co.consent")}</p>}
           </div>
         </aside>
       </div>
@@ -1067,11 +1054,11 @@ export default function CheckoutPage() {
         <div className="mx-auto max-w-md">
           <button
             type="submit"
-            disabled={checkoutBlocked || timeClosed || submitting || quoteLoading || locatingPharmacy}
+            disabled={checkoutBlocked || timeClosed || submitting || (step !== "pharmacy" && quoteLoading) || locatingPharmacy}
             className="flex min-h-13 w-full min-w-0 items-center justify-between gap-3 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-wait disabled:bg-slate-200 disabled:text-slate-500"
           >
             <span className="shrink-0 font-display text-base font-extrabold tabular-nums">{tenge(total)}</span>
-            <span className="min-w-0 truncate">{mobileAction}</span>
+            <span className="min-w-0 truncate">{step === "payment" ? mobileAction : flow.next}</span>
           </button>
         </div>
       </div>
@@ -1192,28 +1179,17 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
   );
 }
 
-function CheckoutProgress({ copy }: { copy: CheckoutExtraCopy["progress"] }) {
-  const steps = [copy.fulfillment, copy.contacts, copy.payment];
-  const desktopSteps = [copy.fulfillment, copy.payment];
+function CheckoutProgress({ copy, step, labels }: { copy: CheckoutExtraCopy["progress"]; step: CheckoutStep; labels: readonly [string, string, string] }) {
+  const activeIndex = ["pharmacy", "delivery", "payment"].indexOf(step);
   return (
-    <>
-      <ol className="mt-4 grid grid-cols-3 gap-2 lg:hidden" aria-label={copy.aria}>
-        {steps.map((step, index) => (
-          <li key={step} className="flex min-w-0 items-center gap-2">
-            <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold", index === 1 ? "bg-brand-600 text-white" : index < 1 ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200" : "bg-white text-slate-500 ring-1 ring-slate-200")}>{index + 1}</span>
-            <span className={cn("truncate text-xs font-semibold sm:text-sm", index === 1 ? "text-brand-800" : "text-slate-500")}>{step}</span>
-          </li>
-        ))}
-      </ol>
-      <ol className="mt-4 hidden grid-cols-2 gap-8 lg:grid" aria-label={copy.aria}>
-        {desktopSteps.map((step, index) => (
-          <li key={step} className="flex min-w-0 items-center gap-2">
-            <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold", index === 1 ? "bg-brand-600 text-white" : "bg-brand-50 text-brand-700 ring-1 ring-brand-200")}>{index + 1}</span>
-            <span className={cn("truncate text-sm font-semibold", index === 1 ? "text-brand-800" : "text-slate-500")}>{step}</span>
-          </li>
-        ))}
-      </ol>
-    </>
+    <ol className="mt-4 grid grid-cols-3 gap-2" aria-label={copy.aria}>
+      {labels.map((label, index) => (
+        <li key={label} className="flex min-w-0 items-center gap-2" aria-current={index === activeIndex ? "step" : undefined}>
+          <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold", index === activeIndex ? "bg-brand-600 text-white" : index < activeIndex ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200" : "bg-white text-slate-500 ring-1 ring-slate-200")}>{index + 1}</span>
+          <span className={cn("truncate text-xs font-semibold sm:text-sm", index === activeIndex ? "text-brand-800" : "text-slate-500")}>{label}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 

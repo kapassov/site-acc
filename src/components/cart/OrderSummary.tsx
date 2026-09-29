@@ -12,16 +12,19 @@ export function OrderSummary({
   count,
   cta,
   fulfillment,
+  priceIsFrom = false,
 }: {
   subtotal: number;
   savings: number;
   count: number;
   cta: React.ReactNode;
   fulfillment?: CartFulfillment;
+  priceIsFrom?: boolean;
 }) {
   const { lang, t, plural } = useLang();
   const copy = cartExtraCopy[lang];
   const fulfillmentCopy = fulfillment ? copy.fulfillment[fulfillment] : null;
+  const fromLabel = { ru: "От", kz: "Бастап", en: "From" }[lang];
   const { user } = useAuth();
   return (
     <div className="sticky top-6 rounded-2xl bg-white p-4 shadow-[0_14px_36px_-30px_rgba(15,23,42,0.55)] sm:p-5">
@@ -55,7 +58,7 @@ export function OrderSummary({
       </dl>
       <div className="mt-4 flex items-end justify-between border-t border-slate-100 pt-4">
         <span className="text-slate-600">{t("sum.total")}</span>
-        <span className="font-display text-2xl font-extrabold text-slate-900">{tenge(subtotal)}</span>
+        <span className="font-display text-2xl font-extrabold text-slate-900">{priceIsFrom ? `${fromLabel} ` : ""}{tenge(subtotal)}</span>
       </div>
       {fulfillment === "courier" && (
         <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{copy.summary.deliveryFeePending}</p>

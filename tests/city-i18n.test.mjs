@@ -50,7 +50,7 @@ test("city UI localizes labels while retaining canonical values for selection an
 
   assert.match(checkout, /const \{ city, setCity, ready: citySelectionReady, needsSelection \} = useCity\(\)/);
   assert.match(checkout, /value=\{city\}/);
-  assert.match(checkout, /setCity\(e\.target\.value\)/);
+  assert.match(checkout, /setCity\(event\.target\.value\)/);
   assert.match(checkout, /cityDisplayName\(choice, lang\)/);
   assert.match(checkout, /city: selectedPharmacy\.city/);
   assert.match(checkout, /city,\s*\n\s*quoteId:/);

@@ -175,7 +175,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
             )
           ) : (
             <>
-              <span className={cn("text-base font-bold tracking-tight sm:text-lg", sale != null ? "text-accent-600" : "text-slate-900")}>{tenge(product.price)}</span>
+              <span className={cn("text-base font-bold tracking-tight sm:text-lg", sale != null ? "text-accent-600" : "text-slate-900")}>{product.source === "daribar" && `${t("card.from")} `}{tenge(product.price)}</span>
               {product.oldPrice && <span className="text-xs text-slate-400 line-through">{tenge(product.oldPrice)}</span>}
             </>
           )}

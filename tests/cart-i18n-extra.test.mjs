@@ -27,13 +27,16 @@ test("cart surfaces derive additional copy from the reactive locale", async () =
   assert.match(page, /copy\.alerts\[cartAlert\]/);
 });
 
-test("order summary branches on a stable fulfillment kind instead of translated labels", async () => {
+test("cart labels catalogue prices as starting prices and defers fulfilment until after pharmacy selection", async () => {
   const [page, summary] = await Promise.all([
     readFile(CART_PAGE, "utf8"),
     readFile(ORDER_SUMMARY, "utf8"),
   ]);
 
-  assert.match(page, /fulfillment=\{fulfillment \?\? undefined\}/);
+  assert.match(page, /checkoutHref = "\/checkout\?step=pharmacy"/);
+  assert.match(page, /priceIsFrom/);
+  assert.doesNotMatch(page, /<FulfillmentCard/);
+  assert.match(summary, /priceIsFrom \? `\$\{fromLabel\} ` : ""/);
   assert.match(summary, /fulfillment\?: CartFulfillment/);
   assert.match(summary, /fulfillment === "courier"/);
   assert.doesNotMatch(summary, /deliveryLabel ===/);

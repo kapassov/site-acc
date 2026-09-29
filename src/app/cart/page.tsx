@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Store, Truck } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
 import { useCart } from "@/lib/cart/CartContext";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useLang } from "@/lib/i18n/LanguageContext";
@@ -15,7 +15,7 @@ import { tenge } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { ConfirmCartDelete } from "@/components/cart/ConfirmCartDelete";
 import { CartItemDeleteButton } from "@/components/cart/CartItemDeleteButton";
-import { cartExtraCopy, type CartAlertKey, type CartFulfillment } from "@/lib/i18n/cart-extra";
+import { cartExtraCopy, type CartAlertKey } from "@/lib/i18n/cart-extra";
 
 export default function CartPage() {
   const { items, count, subtotal, savings, setQty, clear, legacyItemsRemoved, dismissLegacyNotice } = useCart();
@@ -23,9 +23,7 @@ export default function CartPage() {
   const { lang, t } = useLang();
   const copy = cartExtraCopy[lang];
   const router = useRouter();
-  const [selectedFulfillment, setFulfillment] = useState<CartFulfillment | null>(null);
   const hasPrescription = items.some((item) => item.product.prescription);
-  const fulfillment = hasPrescription ? "pickup" : selectedFulfillment;
   const prescriptionNotice = {
     ru: "Рецептурные товары оформляются только самовывозом с оплатой наличными. При получении понадобится действующий рецепт.",
     kz: "Рецептімен берілетін тауарларды тек дәріханадан алып кетіп, қолма-қол төлеуге болады. Алғанда жарамды рецепт қажет.",
@@ -33,13 +31,13 @@ export default function CartPage() {
   }[lang];
   const [checkoutIntent, setCheckoutIntent] = useState(false);
   const [cartAlert, setCartAlert] = useState<CartAlertKey | null>(null);
-  const fulfillmentRef = useRef<HTMLElement>(null);
   const itemsRef = useRef<HTMLElement>(null);
 
-  const checkoutReady = count > 0 && fulfillment !== null;
-  const checkoutHref = fulfillment ? `/checkout?delivery=${fulfillment}` : "/checkout";
-  const checkoutLabel = fulfillment === "pickup" ? copy.actions.checkoutPickup : copy.actions.checkoutCourier;
-  const mobileCta = count === 0 ? copy.actions.chooseProducts : fulfillment === null ? copy.actions.chooseFulfillment : checkoutLabel;
+  const checkoutReady = count > 0;
+  const checkoutHref = "/checkout?step=pharmacy";
+  const checkoutLabel = { ru: "Выбрать аптеку", kz: "Дәріхананы таңдау", en: "Choose a pharmacy" }[lang];
+  const fromLabel = { ru: "От", kz: "Бастап", en: "From" }[lang];
+  const mobileCta = count === 0 ? copy.actions.chooseProducts : checkoutLabel;
 
   useEffect(() => {
     if (user && checkoutIntent && checkoutReady) {
@@ -51,11 +49,6 @@ export default function CartPage() {
     if (count === 0) {
       setCartAlert("items");
       itemsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-    if (!fulfillment) {
-      setCartAlert("fulfillment");
-      fulfillmentRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     if (!user) {
@@ -92,6 +85,7 @@ export default function CartPage() {
       </div>
 
       <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight text-slate-900 md:mt-0 md:text-3xl">{t("cart.title")}</h1>
+      <p className="mt-2 text-sm text-slate-600">{{ ru: "Точная стоимость товаров появится после выбора аптеки.", kz: "Тауарлардың нақты бағасы дәріхананы таңдағаннан кейін көрсетіледі.", en: "The exact product total appears after you choose a pharmacy." }[lang]}</p>
 
       {migrationNotice}
       {hasPrescription && <p role="note" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{prescriptionNotice}</p>}
@@ -102,30 +96,6 @@ export default function CartPage() {
           <span>{copy.alerts[cartAlert]}</span>
         </div>
       )}
-
-      <section ref={fulfillmentRef} aria-labelledby="fulfillment-title" className="mt-6 scroll-mt-24">
-        <h2 id="fulfillment-title" className="font-display text-lg font-bold text-slate-900 md:text-xl">{copy.fulfillmentTitle}</h2>
-        <div className="mt-3 grid gap-2">
-          <FulfillmentCard
-            active={fulfillment === "pickup"}
-            invalid={cartAlert === "fulfillment"}
-            onClick={() => { setFulfillment("pickup"); setCartAlert(null); }}
-            icon={<Store className="h-5 w-5" />}
-            title={copy.fulfillment.pickup.title}
-            text={copy.fulfillment.pickup.description}
-            price={copy.fulfillment.pickup.cardPrice}
-          />
-          {!hasPrescription && <FulfillmentCard
-            active={fulfillment === "courier"}
-            invalid={cartAlert === "fulfillment"}
-            onClick={() => { setFulfillment("courier"); setCartAlert(null); }}
-            icon={<Truck className="h-5 w-5" />}
-            title={copy.fulfillment.courier.title}
-            text={copy.fulfillment.courier.description}
-            price={copy.fulfillment.courier.cardPrice}
-          />}
-        </div>
-      </section>
 
       <div className="mt-7 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_350px] lg:items-start">
         <section ref={itemsRef} aria-labelledby="cart-items-title" className="min-w-0 scroll-mt-24">
@@ -146,13 +116,13 @@ export default function CartPage() {
                   </Link>
                   {product.volume && <p className="mt-1 text-xs text-slate-400">{product.volume}</p>}
                   <div className="mt-2 flex flex-wrap items-center gap-3 sm:hidden">
-                    <span className="font-display text-base font-extrabold tabular-nums text-slate-900">{tenge(product.price * qty)}</span>
+                    <span className="font-display text-base font-extrabold tabular-nums text-slate-900">{fromLabel} {tenge(product.price * qty)}</span>
                     <QuantityStepper qty={qty} onChange={(next) => setQty(product.id, next)} size="sm" />
                   </div>
                 </div>
                 <div className="hidden items-center gap-3 sm:flex">
                   <div className="text-right">
-                    <div className="font-display text-lg font-extrabold tabular-nums text-slate-900">{tenge(product.price * qty)}</div>
+                    <div className="font-display text-lg font-extrabold tabular-nums text-slate-900">{fromLabel} {tenge(product.price * qty)}</div>
                     {product.oldPrice && <div className="text-xs text-slate-400 line-through">{tenge(product.oldPrice * qty)}</div>}
                   </div>
                   <QuantityStepper qty={qty} onChange={(next) => setQty(product.id, next)} size="sm" />
@@ -171,7 +141,7 @@ export default function CartPage() {
             subtotal={subtotal}
             savings={savings}
             count={count}
-            fulfillment={fulfillment ?? undefined}
+            priceIsFrom
             cta={(
               <button type="button" onClick={proceedToCheckout} className={cn("flex h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl px-3 font-semibold transition", checkoutReady ? "bg-brand-600 text-white hover:bg-brand-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>
                 <span className="truncate">{checkoutReady ? checkoutLabel : mobileCta}</span><ArrowRight className="h-5 w-5 shrink-0" />
@@ -184,48 +154,11 @@ export default function CartPage() {
 
       <div className="fixed inset-x-0 bottom-0 z-[70] border-t border-slate-200 bg-white/96 px-3 pt-3 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] backdrop-blur-xl [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))] md:hidden">
         <button type="button" onClick={proceedToCheckout} className={cn("mx-auto flex min-h-13 w-full max-w-md min-w-0 items-center justify-between gap-3 rounded-xl px-4 font-semibold transition", checkoutReady ? "bg-brand-600 text-white active:bg-brand-700" : "bg-slate-200 text-slate-600 active:bg-slate-300")}>
-          <span className="shrink-0 font-display text-base font-extrabold tabular-nums">{tenge(subtotal)}</span>
+          <span className="shrink-0 font-display text-base font-extrabold tabular-nums">{fromLabel} {tenge(subtotal)}</span>
           <span className="min-w-0 truncate">{mobileCta}</span>
           <ArrowRight className="h-5 w-5 shrink-0" />
         </button>
       </div>
     </div>
-  );
-}
-
-function FulfillmentCard({
-  active,
-  invalid,
-  onClick,
-  icon,
-  title,
-  text,
-  price,
-}: {
-  active: boolean;
-  invalid?: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  title: string;
-  text: string;
-  price: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "grid min-h-[4.5rem] min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-start gap-2 rounded-2xl border bg-white p-3 text-left shadow-[0_12px_28px_-28px_rgba(15,23,42,0.5)] transition",
-        active ? "border-brand-500 ring-1 ring-brand-500" : invalid ? "border-rose-300 ring-2 ring-rose-100" : "border-transparent hover:border-brand-300",
-      )}
-    >
-      <span className={cn("grid h-9 w-9 place-items-center rounded-xl", active ? "bg-brand-600 text-white" : "bg-brand-50 text-brand-700")}>{active ? <Check className="h-5 w-5" /> : icon}</span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold text-slate-900">{title}</span>
-        <span className="mt-0.5 block text-xs leading-snug text-slate-500">{text}</span>
-      </span>
-      <span className="shrink-0 pt-0.5 text-xs font-semibold text-slate-600">{price}</span>
-    </button>
   );
 }

@@ -9,7 +9,7 @@ test("delivery pharmacy uses the map-and-list dialog rather than a native select
   ]);
   assert.doesNotMatch(checkout, /<select id="checkout-courier-pharmacy"/);
   assert.match(checkout, /aria-haspopup="dialog"/);
-  assert.match(checkout, /mode=\{delivery === "courier"/);
+  assert.match(checkout, /mode=\{step === "pharmacy" \? "selection"/);
   assert.match(picker, /role="dialog" aria-modal="true"/);
   assert.match(picker, /type="search"/);
   assert.match(picker, /filteredPoints\.map/);

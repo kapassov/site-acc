@@ -38,6 +38,7 @@ test("quote and order routes independently enforce the prescription restriction"
   assert.match(checkout, /hasPrescription \? "pickup" : selectedDelivery/);
   assert.match(checkout, /hasPrescription \? "cash" : selectedPayment/);
   const cart = await readFile(new URL("../src/app/cart/page.tsx", import.meta.url), "utf8");
-  assert.match(cart, /hasPrescription \? "pickup" : selectedFulfillment/);
-  assert.match(cart, /!hasPrescription && <FulfillmentCard/);
+  assert.match(cart, /hasPrescription = items\.some/);
+  assert.match(cart, /checkoutHref = "\/checkout\?step=pharmacy"/);
+  assert.match(checkout, /!hasPrescription && <RadioCard active=\{delivery === "courier"\}/);
 });
