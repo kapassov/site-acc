@@ -27,14 +27,10 @@ test("SMSC errors are normalized without upstream private text", () => {
   });
 });
 
-test("P1SMS accepts only a created message with an explicit queue status", () => {
+test("P1SMS accepts only a message the provider reports as sent", () => {
   assert.deepEqual(p1smsResponseResult(true, 200, {
     status: "success",
     data: [{ id: 370506708, status: "sent", phone: "redacted" }],
-  }), { ok: true });
-  assert.deepEqual(p1smsResponseResult(true, 200, {
-    status: "success",
-    data: [{ id: "message-id", status: "moderation" }],
   }), { ok: true });
 });
 
@@ -50,6 +46,10 @@ test("P1SMS rejects message errors and ambiguous success responses", () => {
   assert.deepEqual(p1smsResponseResult(true, 200, {
     status: "success",
     data: [{ id: 1, status: "unknown" }],
+  }), { ok: false, error: "p1sms_invalid_response" });
+  assert.deepEqual(p1smsResponseResult(true, 200, {
+    status: "success",
+    data: [{ id: 2, status: "moderation" }],
   }), { ok: false, error: "p1sms_invalid_response" });
   assert.deepEqual(p1smsResponseResult(false, 502, {}), {
     ok: false,

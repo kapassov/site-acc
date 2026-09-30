@@ -193,7 +193,7 @@ export function p1smsResponseResult(
   const messageId = message.id;
   const hasMessageId = (typeof messageId === "number" && Number.isFinite(messageId))
     || (typeof messageId === "string" && messageId.trim().length > 0);
-  if (!hasMessageId || !["sent", "queued", "moderation"].includes(messageStatus)) {
+  if (!hasMessageId || messageStatus !== "sent") {
     return { ok: false, error: "p1sms_invalid_response" };
   }
   return { ok: true };
