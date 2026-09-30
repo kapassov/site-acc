@@ -7,6 +7,7 @@ import { aggregateDaribarAvailability } from "../src/lib/daribar/availability-in
 import { searchAllDaribarProductsV3 } from "../src/lib/daribar/product-search-v3.ts";
 
 const LOCK_ID = 4_930_511_111;
+const INDEX_COUNT_DESIRED = 99;
 
 function boundedInteger(value, fallback, minimum, maximum) {
   const parsed = Number(value);
@@ -37,7 +38,10 @@ async function loadBatch(skus, city, attempts) {
     try {
       return await searchAllDaribarProductsV3({
         city,
-        items: skus.map((sku) => ({ sku, countDesired: 1 })),
+        // Daribar caps `quantity` at count_desired. Ask for the storefront's
+        // maximum per-line quantity so PostgreSQL stores usable stock, not a
+        // boolean-looking quantity of one.
+        items: skus.map((sku) => ({ sku, countDesired: INDEX_COUNT_DESIRED })),
         availability: "partial",
         replacements: false,
         enableOnSite: true,

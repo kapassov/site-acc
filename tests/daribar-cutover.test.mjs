@@ -81,9 +81,10 @@ test("cutover keeps Daribar UUID projection while serving the complete provider 
 });
 
 test("Daribar storefront availability is refreshed into PostgreSQL in the background", async () => {
-  const [unit, timer] = await Promise.all([
+  const [unit, timer, worker] = await Promise.all([
     readFile(new URL("../deploy/systemd/inkar-shop-daribar-availability.service", import.meta.url), "utf8"),
     readFile(new URL("../deploy/systemd/inkar-shop-daribar-availability.timer", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/sync-daribar-availability.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(unit, /^ExecStart=.*flock.*sync-daribar-availability\.mjs$/m);
   assert.match(unit, /^EnvironmentFile=\/var\/www\/inkar-shop\/\.env\.local$/m);
@@ -91,4 +92,6 @@ test("Daribar storefront availability is refreshed into PostgreSQL in the backgr
   assert.match(unit, /^TimeoutStartSec=7200$/m);
   assert.match(timer, /^OnUnitActiveSec=15m$/m);
   assert.match(timer, /^Persistent=true$/m);
+  assert.match(worker, /INDEX_COUNT_DESIRED = 99/);
+  assert.match(worker, /countDesired: INDEX_COUNT_DESIRED/);
 });
