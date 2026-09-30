@@ -22,6 +22,7 @@ const ALL_CONCURRENCY = 4;
 const ALL_DEADLINE_MS = 10_000;
 const ALL_CACHE_MS = 90_000;
 const MAX_ALL_CACHE_ENTRIES = 4;
+const DEFAULT_PHARMACY_HOURS = "ежедневно 09:00–21:00";
 const allCache = new Map<string, { pharmacies: DaribarPharmacyDto[]; expiresAt: number }>();
 const allInflight = new Map<string, Promise<DaribarPharmacyDto[]>>();
 
@@ -89,7 +90,8 @@ export function mapDaribarPharmacies(
       city,
       lat,
       lon,
-      hours: cleanText(source.opening_hours, 200) || "График уточняется",
+      // Use the agreed temporary schedule until the pharmacy-hours workbook is imported.
+      hours: DEFAULT_PHARMACY_HOURS,
     });
   }
   return pharmacies;

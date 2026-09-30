@@ -17,9 +17,9 @@ export function CheckoutDeliveryPreview() {
   const [addressMapOpen, setAddressMapOpen] = useState(false);
   const [selectedPharmacy, setSelectedPharmacy] = useState(0);
   const samplePharmacies = [
-    { sourceCode: "sloc_preview_1", address: "пр. Гагарина, 181а", city: "Алматы", hours: "08:00–22:00", lat: 43.224, lon: 76.899, total: 2670 },
-    { sourceCode: "sloc_preview_2", address: "ул. Мамыр, Керуентау 2/1", city: "Алматы", hours: "08:00–22:00", lat: 43.211, lon: 76.878, total: 2845 },
-    { sourceCode: "sloc_preview_3", address: "ул. Чайковского, 22а", city: "Алматы", hours: "08:00–22:00", lat: 43.268, lon: 76.936, total: 2900 },
+    { sourceCode: "sloc_preview_1", address: "пр. Гагарина, 181а", city: "Алматы", hours: "09:00–21:00", lat: 43.224, lon: 76.899, total: 2670 },
+    { sourceCode: "sloc_preview_2", address: "ул. Мамыр, Керуентау 2/1", city: "Алматы", hours: "09:00–21:00", lat: 43.211, lon: 76.878, total: 2845 },
+    { sourceCode: "sloc_preview_3", address: "ул. Чайковского, 22а", city: "Алматы", hours: "09:00–21:00", lat: 43.268, lon: 76.936, total: 2900 },
   ];
   const setDetail = (key: keyof DeliveryDetails, value: string | boolean) => setDetails((current) => ({ ...current, [key]: value } as DeliveryDetails));
 

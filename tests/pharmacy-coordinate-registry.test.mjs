@@ -9,7 +9,7 @@ test("verified registry fills an exact Medusa address without changing its ident
   assert.equal(point.sourceCode, "sloc_TEST");
   assert.equal(point.lat, 43.22868);
   assert.equal(point.lon, 76.86406);
-  assert.equal(point.hours, "ежедневно 08:00–22:00");
+  assert.equal(point.hours, "ежедневно 09:00–21:00");
 });
 
 test("verified registry tolerates harmless address formatting", () => {

@@ -25,6 +25,7 @@
     "catalog:daribar:pharmacies": "node scripts/sync-daribar-pharmacies.mjs",
     "catalog:daribar:stack": "node scripts/sync-daribar-stack.mjs",
     "catalog:daribar:rollback": "node scripts/rollback-daribar-catalog.mjs",
+    "standardn:parse": "node scripts/parse-standardn-folder.mjs",
     "catalog:shadow": "node scripts/compare-catalogs.mjs",
     "infra:capacity": "node scripts/audit-host-capacity.mjs",
     "catalog:offers:sync": "node scripts/sync-medusa-pharmacy-offers.mjs",

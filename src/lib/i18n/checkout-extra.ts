@@ -4,7 +4,7 @@ const ru = {
   legacyCartEmpty: "Корзина обновлена: устаревшие позиции удалены. Добавьте товары из нового каталога.",
   action: {
     submitting: "Оформляем…",
-    closed: "Приём заказов откроется в 08:00",
+    closed: "Приём заказов откроется в 09:00",
     choosingPharmacy: "Выбираем аптеку…",
     checkingPrices: "Проверяем цены…",
     confirmPhone: "Подтвердите телефон",
@@ -76,7 +76,7 @@ const ru = {
     paymentLinkUnavailable: "Заказ создан, но платёжная ссылка не получена. Не оформляйте его повторно — проверьте раздел «Мои заказы».",
     orderAlreadyCreated: "Этот заказ уже был создан и отправлен на оплату. Повторная отправка заблокирована — проверьте его статус в «Моих заказах».",
     orderRejected: "Сервис заказов Daribar отклонил запрос. Заказ не создан — проверьте данные и попробуйте ещё раз.",
-    pharmacyClosed: "Приём заказов закрыт с 21:45 до 08:00 по времени Казахстана. Корзина сохранена — оформите заказ после 08:00.",
+    pharmacyClosed: "Аптеки работают с 09:00 до 21:00. Заказы принимаются до 20:30 по времени Казахстана. Корзина сохранена — оформите заказ после 09:00.",
     orderFailed: "Не удалось оформить заказ. Попробуйте ещё раз.",
   },
   navigation: {
@@ -219,7 +219,7 @@ const kz: CheckoutExtraCopy = {
   legacyCartEmpty: "Себет жаңартылды: ескірген позициялар жойылды. Жаңа каталогтан тауарлар қосыңыз.",
   action: {
     submitting: "Рәсімдеп жатырмыз…",
-    closed: "Тапсырыс қабылдау 08:00-де ашылады",
+    closed: "Тапсырыс қабылдау 09:00-де ашылады",
     choosingPharmacy: "Дәріхананы таңдап жатырмыз…",
     checkingPrices: "Бағаларды тексеріп жатырмыз…",
     confirmPhone: "Телефонды растаңыз",
@@ -291,7 +291,7 @@ const kz: CheckoutExtraCopy = {
     paymentLinkUnavailable: "Тапсырыс жасалды, бірақ төлем сілтемесі алынбады. Оны қайта рәсімдемеңіз — «Менің тапсырыстарым» бөлімін тексеріңіз.",
     orderAlreadyCreated: "Бұл тапсырыс жасалып, төлемге жіберілген. Қайта жіберу бұғатталды — күйін «Менің тапсырыстарым» бөлімінен тексеріңіз.",
     orderRejected: "Daribar тапсырыс қызметі сұрауды қабылдамады. Тапсырыс жасалмады — деректерді тексеріп, қайта көріңіз.",
-    pharmacyClosed: "Тапсырыстар Қазақстан уақытымен 21:45-тен 08:00-ге дейін қабылданбайды. Себет сақталды — 08:00-ден кейін рәсімдеңіз.",
+    pharmacyClosed: "Дәріханалар 09:00-ден 21:00-ге дейін жұмыс істейді. Тапсырыстар Қазақстан уақытымен 20:30-ға дейін қабылданады. Себет сақталды — 09:00-ден кейін рәсімдеңіз.",
     orderFailed: "Тапсырысты рәсімдеу мүмкін болмады. Қайталап көріңіз.",
   },
   navigation: {
@@ -428,7 +428,7 @@ const en: CheckoutExtraCopy = {
   legacyCartEmpty: "Your cart was updated: outdated items were removed. Add products from the new catalogue.",
   action: {
     submitting: "Placing order…",
-    closed: "Orders reopen at 08:00",
+    closed: "Orders reopen at 09:00",
     choosingPharmacy: "Selecting a pharmacy…",
     checkingPrices: "Checking prices…",
     confirmPhone: "Confirm your phone",
@@ -500,7 +500,7 @@ const en: CheckoutExtraCopy = {
     paymentLinkUnavailable: "The order was created, but no payment link was returned. Do not place it again — check My orders.",
     orderAlreadyCreated: "This order was already created and sent for payment. Resubmission is blocked — check its status in My orders.",
     orderRejected: "Daribar rejected the order request. The order was not created — check the details and try again.",
-    pharmacyClosed: "Orders are closed from 21:45 to 08:00 Kazakhstan time. Your cart is saved — place the order after 08:00.",
+    pharmacyClosed: "Pharmacies are open 09:00–21:00. Orders are accepted until 20:30 Kazakhstan time. Your cart is saved — place the order after 09:00.",
     orderFailed: "We could not place your order. Please try again.",
   },
   navigation: {

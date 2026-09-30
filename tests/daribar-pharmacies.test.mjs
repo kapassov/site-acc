@@ -82,7 +82,7 @@ test("Daribar pharmacy mapper keeps only active pharmacies from the configured n
     city: "Алматы",
     lat: 43.25,
     lon: 76.9,
-    hours: "08:00–22:00",
+    hours: "ежедневно 09:00–21:00",
   }]);
 });
 
