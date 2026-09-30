@@ -37,6 +37,7 @@ async function fixture(t, options = {}) {
   const settings = {
     DARIBAR_ENABLED: "true", DARIBAR_CATALOG_ENABLED: "true",
     DARIBAR_API_URL: "https://backoffice.daribar.com", DARIBAR_DEFAULT_CITY: "Алматы",
+    DARIBAR_CATALOG_READ_SOURCE: "snapshot",
     DARIBAR_CATALOG_SNAPSHOT_PATH: path, DARIBAR_CATALOG_SNAPSHOT_FRESH_SECONDS: "5400",
     DARIBAR_CATALOG_SNAPSHOT_MAX_AGE_SECONDS: "86400",
     TYPESENSE_URL: "http://127.0.0.1:8108", TYPESENSE_SEARCH_API_KEY: "test-search-only-key",

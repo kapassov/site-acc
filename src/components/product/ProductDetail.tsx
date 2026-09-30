@@ -107,11 +107,10 @@ export function ProductDetail({
   const sale = discountPercent(product.price, product.oldPrice);
   // Эффективная цена за единицу: реальная (calculated) или минимальная по аптекам.
   const unitPrice: number | null = product.priceTBD ? prices?.min ?? null : product.price;
-  // A dated catalogue price is still useful while the live Daribar request is
-  // in flight.  Treating the initial `null` as `false` made the product page
-  // flash "Out of stock" for 10-20 seconds even though checkout could confirm
-  // stock moments later.  A definitive live `false` still wins; until then we
-  // retain the catalogue availability and checkout remains the final gate.
+  // A dated catalogue price remains useful while the PostgreSQL city slice is
+  // loading. Treating the initial `null` as `false` made the page flash "Out
+  // of stock" even though the indexed offers were still loading. A definitive
+  // indexed `false` wins; checkout remains the final live validation gate.
   const currentMaximum = liveAvailability?.city === city ? liveAvailability.maximum : null;
   const stockPending = product.source === "daribar" && currentMaximum === null
     && !(product.stockStale === false && !product.inStock);

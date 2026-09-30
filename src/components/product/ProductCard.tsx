@@ -66,8 +66,8 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
   const lazyMin = usePrice(product.id, Boolean(product.priceTBD && priceInView && !confirmedOut));
   const buyPrice: number | null = product.priceTBD ? (typeof lazyMin === "number" ? lazyMin : null) : product.price;
   const available = !confirmedOut && (product.priceTBD ? typeof lazyMin === "number" : product.inStock);
-  // Catalogue stock is only a display hint. Daribar items get an exact live
-  // city/SKU check on click, then the full basket is rechecked at checkout.
+  // Daribar cards and the click check use the published PostgreSQL city/SKU
+  // index. The full basket is independently rechecked at checkout.
   const canAddToCart = Boolean(product.variantId && buyPrice && !confirmedOut);
 
   const handleAdd = async (e: React.MouseEvent) => {
@@ -90,8 +90,8 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
         const priced = offers.filter((offer) => Number.isSafeInteger(offer.quantity) && Number(offer.quantity) >= 1
           && typeof offer.price === "number" && Number.isFinite(offer.price) && offer.price > 0);
         if (!priced.length) { setStockError("unavailable"); return; }
-        const livePrice = Math.min(...priced.map((offer) => offer.price!));
-        add({ ...product, price: livePrice, priceTBD: false });
+        const indexedPrice = Math.min(...priced.map((offer) => offer.price!));
+        add({ ...product, price: indexedPrice, priceTBD: false });
       } catch {
         if (!controller.signal.aborted) setStockError("failed");
       } finally {

@@ -20,8 +20,9 @@ import {
   DaribarSnapshotFileError,
   readDaribarCatalogSnapshot,
 } from "./snapshot-file.ts";
-import { readDaribarCatalogDatabase } from "./catalog-db.ts";
+import { readDaribarCatalogDatabase, readDaribarSelectedPharmacyAvailability } from "./catalog-db.ts";
 import { hydrateDaribarCatalogPageStock } from "./catalog-live-stock.ts";
+import { searchDaribarPostgresProducts } from "./postgres-search.ts";
 
 // Product normalization excludes «конфиг-рацион» and exposes images only through /api/media/daribar?sku=.
 
@@ -115,6 +116,11 @@ const runtime = globalThis as DaribarRuntime;
 const snapshotCache = runtime.__daribarSnapshots ??= new Map<string, SnapshotCacheEntry>();
 const snapshotInflight = runtime.__daribarSnapshotInflight ??= new Map<string, Promise<DaribarSnapshot>>();
 const productCache = runtime.__daribarProductCache ??= new Map<string, ProductCacheEntry>();
+
+export function daribarCatalogReadSource(environment: NodeJS.ProcessEnv = process.env): "postgres" | "snapshot" {
+  return String(environment.DARIBAR_CATALOG_READ_SOURCE || "postgres").trim().toLowerCase() === "snapshot"
+    ? "snapshot" : "postgres";
+}
 
 function text(value: unknown, max = 300): string {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, max) : "";
@@ -283,7 +289,7 @@ async function cachedSnapshot(key: string, loader: () => Promise<DaribarSnapshot
 
 async function categorySnapshot(city?: string, requireComplete = false): Promise<DaribarSnapshot> {
   const requestedCity = daribarKeywordCity(city);
-  const databaseFirst = String(process.env.DARIBAR_CATALOG_READ_SOURCE || "snapshot").trim().toLowerCase() === "postgres";
+  const databaseFirst = daribarCatalogReadSource() === "postgres";
   try {
     if (databaseFirst) {
       const source = await readDaribarCatalogDatabase();
@@ -298,7 +304,7 @@ async function categorySnapshot(city?: string, requireComplete = false): Promise
         reportedTotal: source.sourceCount,
         pages: 1,
         generatedAt: source.generatedAt,
-        stale: false,
+        stale: source.availabilityStale,
         sourceMode: "postgres_snapshot",
       };
     }
@@ -367,6 +373,17 @@ async function productSearchSnapshot(
   options: DaribarSearchOptions = {},
 ): Promise<DaribarSnapshot> {
   const q = text(keyword, 120);
+  if (daribarCatalogReadSource() === "postgres") {
+    const full = await categorySnapshot(city, true);
+    const result = searchDaribarPostgresProducts({ query: q, products: full.products, exact: options.exact });
+    return {
+      ...full,
+      products: result.products,
+      sourceMode: "postgres_snapshot",
+      search: result.search,
+      searchEngine: "postgres",
+    };
+  }
   const configured = typesenseSearchConfigured();
   let sourceProducts: Product[] | undefined;
   if (configured) {
@@ -535,8 +552,14 @@ export async function getDaribarCatalogPage(query: CatalogQuery, city?: string, 
   if (!daribarCatalogEnabled()) throw new DaribarCatalogError("daribar_catalog_disabled");
   ensureSupportedCategory(query);
   const snapshot = query.q ? await productSearchSnapshot(query.q, city, options) : await categorySnapshot(city);
-  if (snapshot.searchEngine !== "typesense") await validateNativeKeywordFilters(query, snapshot, city);
+  if (snapshot.searchEngine === "daribar") await validateNativeKeywordFilters(query, snapshot, city);
   const page = pageFromProducts(snapshot.products, query, snapshot, Boolean(query.q), snapshot.sourceMode);
+  if (daribarCatalogReadSource() === "postgres") {
+    return {
+      ...page,
+      ...(snapshot.search ? { search: snapshot.search, searchEngine: snapshot.searchEngine } : {}),
+    };
+  }
   const live = await hydrateDaribarCatalogPageStock(page.products, daribarCategoryCity(city));
   return {
     ...page,
@@ -570,7 +593,8 @@ export async function searchDaribarProductsWithMetadata(
 ): Promise<DaribarSearchResponse> {
   const q = text(query, 120);
   const empty = { products: [], search: { query: q, matchedQuery: null, matchType: "none" as const, degraded: false },
-    engine: "daribar" as const, generatedAt: new Date().toISOString(), stale: false };
+    engine: daribarCatalogReadSource() === "postgres" ? "postgres" as const : "daribar" as const,
+    generatedAt: new Date().toISOString(), stale: false };
   if (!daribarCatalogEnabled() || !q) return empty;
   const snapshot = await productSearchSnapshot(q, city, options);
   return {
@@ -601,11 +625,38 @@ export async function searchDaribarInPharmaciesWithMetadata(
 ): Promise<DaribarSearchResponse> {
   const q = text(query, 120);
   const empty: DaribarSearchResponse = { products: [], search: { query: q, matchedQuery: null, matchType: "none", degraded: false },
-    engine: "daribar", generatedAt: new Date().toISOString(), stale: false };
+    engine: daribarCatalogReadSource() === "postgres" ? "postgres" : "daribar",
+    generatedAt: new Date().toISOString(), stale: false };
   if (!daribarCatalogEnabled()) return empty;
   const codes = [...new Set(pharmacyCodes.map((code) => text(code, 128))
     .filter((code) => /^[A-Za-z0-9._:-]{1,128}$/.test(code)))].slice(0, MAX_PHARMACIES);
   if (!q || codes.length === 0) return empty;
+  if (daribarCatalogReadSource() === "postgres") {
+    const resolved = await productSearchSnapshot(q, city, options);
+    const byPharmacy = await readDaribarSelectedPharmacyAvailability(
+      resolved.products.flatMap((product) => product.sku ? [product.sku] : []),
+      codes,
+      daribarCategoryCity(city),
+    );
+    const products = resolved.products.flatMap((product): Product[] => {
+      if (!product.sku) return [];
+      const available = byPharmacy.get(product.sku);
+      return available ? [{
+        ...product,
+        price: available.minPrice,
+        priceTBD: false,
+        inStock: true,
+        stockPharmacies: available.pharmacyCount,
+      }] : [];
+    });
+    return {
+      products: products.slice(0, Math.min(500, Math.max(1, Math.trunc(limit) || 40))),
+      search: products.length ? resolved.search! : { ...resolved.search!, matchType: "none", matchedQuery: null },
+      engine: "postgres",
+      generatedAt: resolved.generatedAt,
+      stale: resolved.stale,
+    };
+  }
   let resolved: DaribarSnapshot | null = null;
   let names = [q];
   if (typesenseSearchConfigured()) {
@@ -693,6 +744,7 @@ export async function getDaribarProductBySlug(slug: string, city?: string): Prom
     const snapshot = await categorySnapshot(city);
     exact = snapshot.products.find((product) => product.sku === sku) || null;
   }
+  if (daribarCatalogReadSource() === "postgres") return exact;
   try {
     const payload = await daribarJson<DaribarProductResponse>("/api/v2/products/cache/get", {
       query: { sku: [sku] },

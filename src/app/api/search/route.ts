@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     });
     const searchEngine = "searchEngine" in page ? page.searchEngine : undefined;
     return NextResponse.json({ products: page.products, count: page.count,
-      meta: { source, mode: pharmacies.length ? "selected_pharmacies" : "title_fuzzy", engine: source === "daribar" ? (searchEngine || "typesense") : "medusa_title_index", search: page.search, stale: page.stale, pharmacies } },
+      meta: { source, mode: pharmacies.length ? "selected_pharmacies" : "title_fuzzy", engine: source === "daribar" ? (searchEngine || "postgres") : "medusa_title_index", search: page.search, stale: page.stale, pharmacies } },
     { headers: { ...NO_STORE, "x-search-source": source } });
   } catch (error) {
     return NextResponse.json({ products: [], error: { code: error instanceof CatalogQueryError ? "invalid_search_query" : "catalog_search_unavailable" } },

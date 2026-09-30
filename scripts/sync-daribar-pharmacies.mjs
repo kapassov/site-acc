@@ -14,11 +14,12 @@ function localId(sourceCode) {
 async function discoverySkus(pool) {
   try {
     const snapshot = await readDaribarCatalogSnapshot();
-    const skus = snapshot.products
+    const available = snapshot.products
       .filter((product) => Number(product.quantity) > 0 || product.in_stock === true || product.in_stock === "1")
-      .map((product) => String(product.sku || "").trim())
-      .filter(Boolean)
-      .slice(0, 5);
+      .map((product) => ({ sku: String(product.sku || "").trim(), name: String(product.name || "").trim() }))
+      .filter((product) => product.sku);
+    const priority = available.filter((product) => /диклофен.*ампул|^шприц\b|салфет.*спирт/iu.test(product.name));
+    const skus = [...new Set([...priority, ...available].map((product) => product.sku))].slice(0, 30);
     if (skus.length) return skus;
   } catch {
     // A published PostgreSQL snapshot remains usable when a new file refresh
@@ -30,31 +31,40 @@ async function discoverySkus(pool) {
     JOIN daribar_catalog_runs run ON run.id = state.active_run_id AND run.status = 'published'
     JOIN daribar_catalog_products product ON product.run_id = run.id
     WHERE state.singleton AND product.catalog_stock > 0
-    ORDER BY product.catalog_stock DESC, product.sku
-    LIMIT 5
+    ORDER BY CASE
+      WHEN lower(product.name) ~ 'диклофен.*ампул|^шприц|салфет.*спирт' THEN 0
+      ELSE 1
+    END, product.catalog_stock DESC, product.sku
+    LIMIT 30
   `);
   return current.rows.map((row) => String(row.sku || "").trim()).filter(Boolean);
 }
 
 async function discoverPharmacies(city, pool) {
+  let directory = [];
   try {
-    const directory = await getDaribarPharmacies(city);
-    if (directory.length) return directory;
+    directory = await getDaribarPharmacies(city);
   } catch {
     // Some partner credentials allow catalogue/commerce v3 but not the legacy
     // pharmacy directory. The v3 response still carries the same exact source
     // identity and coordinates under the integration code.
   }
-  const skus = await discoverySkus(pool);
-  if (!skus.length) throw new Error("daribar_pharmacy_discovery_sku_missing");
-  const rows = await searchAllDaribarProductsV3({
-    city,
-    items: skus.map((sku) => ({ sku, countDesired: 1 })),
-    availability: "all",
-    replacements: false,
-    enableOnSite: true,
-  });
-  return [...new Map(rows
+  let rows = [];
+  try {
+    const skus = await discoverySkus(pool);
+    if (skus.length) {
+      rows = await searchAllDaribarProductsV3({
+        city,
+        items: skus.map((sku) => ({ sku, countDesired: 1 })),
+        availability: "partial",
+        replacements: false,
+        enableOnSite: true,
+      });
+    }
+  } catch {
+    // Keep the provider directory when product discovery is temporarily down.
+  }
+  const discovered = rows
     .filter((row) => row.city.toLocaleLowerCase("ru") === city.toLocaleLowerCase("ru")
       && row.address && row.lat !== undefined && row.lon !== undefined)
     .map((row) => [row.sourceCode, {
@@ -65,7 +75,11 @@ async function discoverPharmacies(city, pool) {
       lat: row.lat,
       lon: row.lon,
       hours: row.openingHours || "График уточняется",
-    }])).values()];
+    }]);
+  return [...new Map([
+    ...directory.filter((pharmacy) => pharmacy.sourceCode).map((pharmacy) => [pharmacy.sourceCode, pharmacy]),
+    ...discovered,
+  ]).values()];
 }
 
 const pool = await ordersDatabasePool();

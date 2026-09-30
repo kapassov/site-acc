@@ -6,4 +6,4 @@ export type ProductSearchMetadata = {
   degraded: boolean;
 };
 
-export type ProductSearchEngine = "typesense" | "daribar";
+export type ProductSearchEngine = "postgres" | "typesense" | "daribar";

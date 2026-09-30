@@ -42,9 +42,8 @@ DARIBAR_ORDER_ENABLED=true
 DARIBAR_API_URL=https://prod-backoffice.daribar.com
 DARIBAR_CATALOG_READ_SOURCE=postgres
 DARIBAR_CATALOG_SNAPSHOT_PATH=/var/www/inkar-shop/shared/data/daribar-catalog.snapshot.json
-TYPESENSE_URL=http://127.0.0.1:8108
-TYPESENSE_COLLECTION=daribar-products
-# TYPESENSE_SEARCH_API_KEY и TYPESENSE_ADMIN_API_KEY задаются только на сервере.
+# Storefront читает каталог, поиск, цены и остатки только из PostgreSQL.
+# Daribar вызывается фоновыми синхронизаторами и при финальной проверке заказа.
 ```
 
 Откат storefront: вернуть `STOREFRONT_CATALOG_PROVIDER=medusa` и перезапустить
@@ -53,15 +52,16 @@ TYPESENSE_COLLECTION=daribar-products
 Полный атомарный цикл выполняет `npm run catalog:daribar:stack`:
 
 1. загружает и атомарно переименовывает полный снимок Daribar;
-2. строит новую версию коллекции Typesense и переключает alias после проверки;
+2. синхронизирует справочник аптек;
 3. нормализует данные в PostgreSQL и одной транзакцией меняет `active_run_id`;
-4. сохраняет предыдущий run для немедленного отката.
+4. строит версионированный индекс цен и остатков в PostgreSQL;
+5. сохраняет предыдущие runs для немедленного отката.
 
 `deploy/systemd/inkar-shop-daribar-sync.timer` запускает этот цикл ежедневно.
+`deploy/systemd/inkar-shop-daribar-availability.timer` обновляет атомарный
+PostgreSQL-срез цен и остатков каждые 15 минут.
 `deploy/systemd/inkar-shop-catalog-shadow.timer` записывает сравнение Medusa и
 Daribar в `catalog_shadow_reports`.
-`deploy/systemd/typesense-server.service` поднимает локальный Typesense только
-на `127.0.0.1:8108`; ключ администратора берётся из серверного env-файла.
 
 До включения Daribar нужно применить миграции (`npm run db:migrate`), запустить
 первую синхронизацию и проверить хост командой `npm run infra:capacity`.

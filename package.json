@@ -23,6 +23,7 @@
     "catalog:daribar:sync": "node scripts/sync-daribar-catalog.mjs",
     "catalog:daribar:publish": "node scripts/publish-daribar-catalog.mjs",
     "catalog:daribar:pharmacies": "node scripts/sync-daribar-pharmacies.mjs",
+    "catalog:daribar:availability": "node scripts/sync-daribar-availability.mjs",
     "catalog:daribar:stack": "node scripts/sync-daribar-stack.mjs",
     "catalog:daribar:rollback": "node scripts/rollback-daribar-catalog.mjs",
     "standardn:parse": "node scripts/parse-standardn-folder.mjs",

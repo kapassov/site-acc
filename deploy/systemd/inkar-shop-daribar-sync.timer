@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Daribar catalogue and Typesense refresh
+Description=Daily Daribar to PostgreSQL catalogue refresh
 
 [Timer]
 OnCalendar=*-*-* 03:15:00 Asia/Almaty
@@ -9,4 +9,3 @@ Unit=inkar-shop-daribar-sync.service
 
 [Install]
 WantedBy=timers.target
-

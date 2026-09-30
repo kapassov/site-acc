@@ -18,10 +18,9 @@ function run(script, args = []) {
   });
 }
 
-// The file is atomically renamed first. Typesense then switches its alias to
-// that exact snapshot. PostgreSQL publishes last; until it does, the runtime's
-// generatedAt guard rejects the newer index instead of mixing two versions.
+// PostgreSQL owns every storefront read. Publish the immutable catalogue run,
+// then build an availability run that is bound to that exact catalogue run.
 await run("scripts/sync-daribar-catalog.mjs");
 await run("scripts/sync-daribar-pharmacies.mjs");
-await run("scripts/sync-typesense-catalog.mjs", ["--retain-versions", "3"]);
 await run("scripts/publish-daribar-catalog.mjs");
+await run("scripts/sync-daribar-availability.mjs");

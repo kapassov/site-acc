@@ -30,7 +30,7 @@ test("availability fails partial requests safely and only caches complete respon
   assert.match(source, /STALE_MS = 60_000/);
 });
 
-test("public availability route intersects live Daribar stock with own Medusa prices", async () => {
+test("public Daribar availability reads the published PostgreSQL index", async () => {
   const source = await readFile(ROUTE, "utf8");
 
   assert.match(source, /rateLimit\(`availability:\$\{clientIp\(request\)\}`, 30, 60_000/);
@@ -45,8 +45,9 @@ test("public availability route intersects live Daribar stock with own Medusa pr
   assert.match(source, /medusa_last_known_price\+daribar_v3_stock/);
   assert.match(source, /if \(servesDaribarCatalog\(\)\)/);
   assert.match(source, /daribarSkuFromProductId\(id\)/);
-  assert.match(source, /daribarProductAvailabilityRows\(live, mapped, sku, prescriptionFlags\.get\(sku\)\)/);
-  assert.match(source, /source: "daribar_v3_price_and_stock"/);
+  assert.match(source, /readDaribarProductAvailability\(sku, city\)/);
+  assert.match(source, /source: "postgres_availability_index"/);
+  assert.match(source, /validUntil: stored\.validUntil/);
   assert.match(source, /"no-store"/);
   assert.doesNotMatch(source, /DARIBAR_(?:TOKEN|SERVICE_TOKEN)|authorization/i);
 });

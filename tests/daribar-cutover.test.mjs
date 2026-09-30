@@ -76,14 +76,17 @@ test("cutover keeps Daribar UUID projection while serving the complete provider 
   assert.match(uuidMigration, /ADD COLUMN IF NOT EXISTS daribar_uuid/);
   assert.match(fullCatalogMigration, /DROP CONSTRAINT IF EXISTS daribar_catalog_products_uuid_required/);
   assert.doesNotMatch(fullCatalogMigration, /DELETE FROM|TRUNCATE/i);
-  assert.ok(stack.indexOf("sync-typesense-catalog") < stack.indexOf("publish-daribar-catalog"));
+  assert.doesNotMatch(stack, /sync-typesense-catalog/);
+  assert.ok(stack.indexOf("publish-daribar-catalog") < stack.indexOf("sync-daribar-availability"));
 });
 
-test("Typesense is deployed as a private restartable local service", async () => {
-  const unit = await readFile(new URL("../deploy/systemd/typesense-server.service", import.meta.url), "utf8");
-  assert.match(unit, /^ExecStart=.*--listen-address=127\.0\.0\.1.*--api-port=8108$/m);
-  assert.match(unit, /^EnvironmentFile=-\/etc\/inkar-shop\/inkar-shop\.env$/m);
-  assert.match(unit, /^Restart=on-failure$/m);
-  assert.match(unit, /^StateDirectory=typesense$/m);
-  assert.doesNotMatch(unit, /NEXT_PUBLIC|0\.0\.0\.0/);
+test("Daribar storefront availability is refreshed into PostgreSQL in the background", async () => {
+  const [unit, timer] = await Promise.all([
+    readFile(new URL("../deploy/systemd/inkar-shop-daribar-availability.service", import.meta.url), "utf8"),
+    readFile(new URL("../deploy/systemd/inkar-shop-daribar-availability.timer", import.meta.url), "utf8"),
+  ]);
+  assert.match(unit, /^ExecStart=.*sync-daribar-availability\.mjs$/m);
+  assert.match(unit, /^EnvironmentFile=\/etc\/inkar-shop\.env$/m);
+  assert.match(timer, /^OnUnitActiveSec=15m$/m);
+  assert.match(timer, /^Persistent=true$/m);
 });

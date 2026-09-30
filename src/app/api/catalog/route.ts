@@ -33,10 +33,10 @@ export async function GET(request: Request) {
         ? (source === "medusa" ? resolveMedusaCategoryHandle(query.category) : query.category) : null },
       meta: {
         source, sourceMode: page.sourceMode,
-        searchEngine: source === "daribar" ? (searchEngine || "typesense") : "medusa_title_index",
+        searchEngine: source === "daribar" ? (searchEngine || "postgres") : "medusa_title_index",
         ...(page.search ? { search: page.search } : {}), pharmacies,
         priceScope: source === "daribar" ? "daribar_catalog_price" : (pharmacies.length ? "selected_pharmacy_price" : "medusa_last_known_price"),
-        availabilityScope: source === "daribar" ? "live_mapped_network_page_and_checkout" : (pharmacies.length ? "selected_pharmacy_stock" : "fresh_guarded_medusa_stock"),
+        availabilityScope: source === "daribar" ? "postgres_background_availability_index_checkout_live" : (pharmacies.length ? "selected_pharmacy_stock" : "fresh_guarded_medusa_stock"),
         generatedAt: page.generatedAt, sourceCount: page.catalogTotal, loadedCount: page.products.length,
         complete: page.complete, stale: page.stale, degraded: page.stale, dataState: page.stale ? "stale" : "fresh",
         coverage: "full_catalog", responseScope: "bounded_page",

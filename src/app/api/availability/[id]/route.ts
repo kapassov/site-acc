@@ -5,8 +5,7 @@ import { daribarSkuForMedusaProduct, mappedDaribarPharmacies } from "@/lib/darib
 import { searchAllDaribarProductsV3 } from "@/lib/daribar/product-search-v3";
 import { daribarSkuFromProductId } from "@/lib/daribar/ids";
 import { servesDaribarCatalog } from "@/lib/catalog-provider";
-import { daribarProductAvailabilityRows } from "@/lib/daribar/product-availability";
-import { readDaribarCatalogPrescriptionFlags } from "@/lib/daribar/catalog-db";
+import { readDaribarCatalogPrescriptionFlags, readDaribarProductAvailability } from "@/lib/daribar/catalog-db";
 export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -19,27 +18,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (servesDaribarCatalog()) {
       const sku = daribarSkuFromProductId(id);
       if (!sku) return NextResponse.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
-      const [mapped, prescriptionFlags] = await Promise.all([
-        mappedDaribarPharmacies(city), readDaribarCatalogPrescriptionFlags([sku]),
+      const [stored, prescriptionFlags] = await Promise.all([
+        readDaribarProductAvailability(sku, city), readDaribarCatalogPrescriptionFlags([sku]),
       ]);
       if (!prescriptionFlags.has(sku)) return NextResponse.json({ error: "availability_unavailable" }, { status: 503, headers: NO_STORE });
-      if (!mapped.size) return NextResponse.json({ error: "availability_unavailable" }, { status: 503, headers: NO_STORE });
-      const live = await searchAllDaribarProductsV3({
-        city,
-        items: [{ sku, countDesired: 1_000_000, priority: 1 }],
-        availability: "all",
-        replacements: false,
-        enableOnSite: true,
-      });
-      const pharmacies = daribarProductAvailabilityRows(live, mapped, sku, prescriptionFlags.get(sku));
+      const pharmacies = prescriptionFlags.get(sku)
+        ? stored.pharmacies.filter((pharmacy) => pharmacy.paymentOnSite === true)
+        : stored.pharmacies;
       return NextResponse.json({
         city,
         total: pharmacies.length,
         pharmacies,
         partial: false,
-        stale: false,
-        source: "daribar_v3_price_and_stock",
-        liveCheckedAt: new Date().toISOString(),
+        stale: stored.stale,
+        source: "postgres_availability_index",
+        sourceDate: stored.generatedAt,
+        validUntil: stored.validUntil,
       }, { headers: NO_STORE });
     }
     const [info, products, sku, mapped] = await Promise.all([

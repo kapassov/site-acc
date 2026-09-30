@@ -1,5 +1,5 @@
 [Unit]
-Description=Inkar atomic Daribar to PostgreSQL catalogue synchronization
+Description=Refresh Daribar availability into Inkar PostgreSQL
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -9,7 +9,7 @@ User=inkar-shop
 Group=inkar-shop
 WorkingDirectory=/var/www/inkar-shop/current
 EnvironmentFile=/etc/inkar-shop.env
-ExecStart=/usr/bin/node scripts/sync-daribar-stack.mjs
+ExecStart=/usr/bin/node scripts/sync-daribar-availability.mjs
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
@@ -17,4 +17,3 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/inkar-shop /var/www/inkar-shop/shared/data
