@@ -1,4 +1,5 @@
 import { checkoutItemSource } from "../checkoutItems.ts";
+import { daribarSkuFromIds } from "../daribar/ids.ts";
 
 export type CartCatalogProvider = "medusa" | "daribar";
 
@@ -16,10 +17,12 @@ export function validMedusaCartItem(value: unknown): boolean {
 export function validDaribarCartItem(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as { product?: { id?: unknown; variantId?: unknown; source?: unknown; sku?: unknown }; qty?: unknown };
+  const decodedSku = daribarSkuFromIds(item.product?.id, item.product?.variantId);
   return item.product?.source === "daribar"
     && typeof item.product.id === "string"
     && typeof item.product.variantId === "string"
-    && typeof item.product.sku === "string"
+    && decodedSku !== null
+    && item.product.sku === decodedSku
     && checkoutItemSource({ productId: item.product.id, variantId: item.product.variantId }) === "daribar"
     && Number.isSafeInteger(item.qty) && Number(item.qty) >= 1 && Number(item.qty) <= 99;
 }

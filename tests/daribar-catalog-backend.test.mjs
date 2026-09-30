@@ -10,10 +10,11 @@ import {
   projectDaribarCatalog,
 } from "../src/lib/daribar/catalog-data.ts";
 import { collectDaribarPages, DaribarCatalogError } from "../src/lib/daribar/catalog.ts";
+import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 function raw(sku, overrides = {}) {
   return {
-    sku,
+    sku: daribarUuid(sku),
     name: `Товар ${sku}`,
     manufacturer: "Alpha Pharma",
     categories_ids: ["9", "145", "2"],
@@ -42,11 +43,11 @@ test("Daribar product mapping keeps supplier identity, price, image and canonica
   }));
   assert.ok(product);
   assert.equal(product.source, "daribar");
-  assert.equal(product.sku, "SKU-ONE");
+  assert.equal(product.sku, daribarUuid("SKU-ONE"));
   assert.equal(product.price, 7_250);
   assert.equal(product.categorySlug, "zagar-i-zashita-ot-solnca");
   assert.ok(product.categoryHandles.includes("kosmetika"));
-  assert.equal(product.image, "/api/media/daribar?sku=SKU-ONE");
+  assert.equal(product.image, `/api/media/daribar?sku=${daribarUuid("SKU-ONE")}`);
   assert.match(product.id, /^prod_Daribar/);
   assert.match(product.variantId, /^variant_Daribar/);
 });
@@ -55,7 +56,7 @@ test("Peptide Bio uses one Cyrillic display name and one stable legacy filter ke
   const product = mapDaribarProduct(raw("PEPTIDE", { manufacturer: "ТД Пептид Био" }));
   assert.equal(product?.brand, "Пептид Био");
   const query = parseCatalogQuery(new URLSearchParams("brand=peptid-bio&limit=24"));
-  assert.deepEqual(projectDaribarCatalog([product].filter(Boolean), query).products.map((item) => item.sku), ["PEPTIDE"]);
+  assert.deepEqual(projectDaribarCatalog([product].filter(Boolean), query).products.map((item) => item.sku), [daribarUuid("PEPTIDE")]);
 });
 
 test("stable Daribar dedupe keeps the first authoritative occurrence of each SKU", () => {
@@ -63,7 +64,7 @@ test("stable Daribar dedupe keeps the first authoritative occurrence of each SKU
   const duplicate = mapDaribarProduct(raw("SKU-A", { min_customer_price: 900 }));
   const second = mapDaribarProduct(raw("SKU-B"));
   const deduped = dedupeDaribarProducts([first, duplicate, second].filter(Boolean));
-  assert.deepEqual(deduped.map((product) => product.sku), ["SKU-A", "SKU-B"]);
+  assert.deepEqual(deduped.map((product) => product.sku), ["SKU-A", "SKU-B"].map(daribarUuid));
   assert.equal(deduped[0].price, 500);
 });
 
@@ -74,7 +75,7 @@ test("public Daribar catalogue hides products without a sellable price or stock"
     mapDaribarProduct(raw("NO-STOCK", { min_customer_price: 1000, quantity: 0, in_stock: false })),
   ].filter(Boolean);
   const page = projectDaribarCatalog(products, parseCatalogQuery(new URLSearchParams("limit=24")));
-  assert.deepEqual(page.products.map((product) => product.sku), ["SELLABLE"]);
+  assert.deepEqual(page.products.map((product) => product.sku), [daribarUuid("SELLABLE")]);
   assert.equal(page.matched.length, 1);
 });
 
@@ -89,8 +90,8 @@ test("global filters, facets and sorting are applied before Daribar pagination",
     "category=bady&brand=alpha-pharma&minPrice=850&maxPrice=1200&prescription=otc&sort=price_desc&limit=1&offset=1",
   ));
   const page = projectDaribarCatalog(products, query);
-  assert.deepEqual(page.matched.map((product) => product.sku), ["C", "A"]);
-  assert.deepEqual(page.products.map((product) => product.sku), ["A"]);
+  assert.deepEqual(page.matched.map((product) => product.sku), ["C", "A"].map(daribarUuid));
+  assert.deepEqual(page.products.map((product) => product.sku), [daribarUuid("A")]);
   assert.equal(page.facets.price.min, 900);
   assert.equal(page.facets.price.max, 1_100);
   assert.equal(page.facets.categories.find((category) => category.slug === "bady")?.count, 2);
@@ -103,14 +104,14 @@ test("browse prioritizes orderable OTC but an already-ranked search keeps medica
   const products = [exactRx, similarOtc].filter(Boolean);
 
   const browse = projectDaribarCatalog(products, parseCatalogQuery(new URLSearchParams("limit=24")));
-  assert.deepEqual(browse.products.map((product) => product.sku), ["SIMILAR-OTC", "EXACT-RX"]);
+  assert.deepEqual(browse.products.map((product) => product.sku), ["SIMILAR-OTC", "EXACT-RX"].map(daribarUuid));
 
   const rankedSearch = projectDaribarCatalog(
     products,
     parseCatalogQuery(new URLSearchParams("q=%D0%BD%D1%83%D1%80%D0%BE%D1%84%D0%B5%D0%BD&limit=24")),
     true,
   );
-  assert.deepEqual(rankedSearch.products.map((product) => product.sku), ["EXACT-RX", "SIMILAR-OTC"]);
+  assert.deepEqual(rankedSearch.products.map((product) => product.sku), ["EXACT-RX", "SIMILAR-OTC"].map(daribarUuid));
 });
 
 test("page collector continues through short/overlapping pages and stops only at authority completion", async () => {
@@ -124,7 +125,7 @@ test("page collector continues through short/overlapping pages and stops only at
   assert.deepEqual(calls, [[1, 500], [2, 500], [3, 500]]);
   assert.equal(result.rawCount, 4);
   assert.equal(result.pages, 2);
-  assert.deepEqual(dedupeDaribarProducts(result.rawProducts.map(mapDaribarProduct).filter(Boolean)).map((product) => product.sku), ["A", "B", "C"]);
+  assert.deepEqual(dedupeDaribarProducts(result.rawProducts.map(mapDaribarProduct).filter(Boolean)).map((product) => product.sku), ["A", "B", "C"].map(daribarUuid));
 });
 
 test("page collector fails closed on a stalled or truncated provider", async () => {

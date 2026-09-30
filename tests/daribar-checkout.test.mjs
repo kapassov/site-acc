@@ -13,6 +13,7 @@ import {
   getDaribarExactPharmacyStock,
 } from "../src/lib/daribar/availability.ts";
 import { daribarProductId, daribarVariantId } from "../src/lib/daribar/ids.ts";
+import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 const CHECKOUT = new URL("../src/lib/daribar/checkout.ts", import.meta.url);
 const QUOTE = new URL("../src/lib/checkoutQuote.ts", import.meta.url);
@@ -62,7 +63,7 @@ test("active quote accepts one native source and binds the complete basket to li
 });
 
 test("Daribar v2 offer parser rejects cheaper pharmacies outside the configured network", () => {
-  const sku = "SKU-NETWORK-1";
+  const sku = daribarUuid("SKU-NETWORK-1");
   const items = [{ productId: daribarProductId(sku), variantId: daribarVariantId(sku), quantity: 2 }];
   const product = {
     sku,
@@ -126,15 +127,15 @@ test("exact pharmacy enrichment uses one production v3 basket request", async ()
     const lines = await getDaribarExactPharmacyStock({
       sourceCode: "own-pharmacy",
       city: "Алматы",
-      items: Array.from({ length: 5 }, (_, index) => ({ sku: `SKU-${index + 1}`, quantity: 2 })),
+      items: Array.from({ length: 5 }, (_, index) => ({ sku: daribarUuid(`SKU-${index + 1}`), quantity: 2 })),
     });
     assert.equal(lines.length, 5);
     assert.deepEqual([...seenOrigins], ["https://prod-backoffice.daribar.com"]);
-    assert.deepEqual(lines[0], { sku: "SKU-1", availableQuantity: 2, unitPrice: 1250 });
+    assert.deepEqual(lines[0], { sku: daribarUuid("SKU-1"), availableQuantity: 2, unitPrice: 1250 });
 
     globalThis.fetch = async () => new Response(JSON.stringify({ status: "success", result: [{
       source: { code: "own-pharmacy", name: "ASS", city: "Алматы", address: "Абая 1" },
-      products: [{ source_code: "own-pharmacy", sku: "ANALOG-NOT-REQUESTED", quantity: 1,
+      products: [{ source_code: "own-pharmacy", sku: daribarUuid("ANALOG-NOT-REQUESTED"), quantity: 1,
         quantity_desired: 1, base_price: 1, price_with_warehouse_discount: 1 }],
     }],
     }), { status: 200, headers: { "content-type": "application/json" } });
@@ -142,7 +143,7 @@ test("exact pharmacy enrichment uses one production v3 basket request", async ()
       getDaribarExactPharmacyStock({
         sourceCode: "own-pharmacy",
         city: "Алматы",
-        items: [{ sku: "SKU-EXACT", quantity: 1 }],
+        items: [{ sku: daribarUuid("SKU-EXACT"), quantity: 1 }],
       }),
       (error) => error instanceof DaribarAvailabilityError && error.code === "cart_item_unavailable",
     );
@@ -162,7 +163,7 @@ test("exact checkout falls back to the next ranked pharmacy and caps attempts", 
   const previousOrigin = process.env.DARIBAR_AUTH_API_URL;
   const previousCommerce = process.env.DARIBAR_COMMERCE_API_URL;
   const previousNetwork = process.env.DARIBAR_NETWORK_CODE;
-  const sku = "SKU-FALLBACK-1";
+  const sku = daribarUuid("SKU-FALLBACK-1");
   const productId = daribarProductId(sku);
   const variantId = daribarVariantId(sku);
   const makeOffer = (sourceCode) => ({
@@ -229,7 +230,7 @@ test("quote search maps safe Daribar transport codes to checkout errors", async 
   const previousEnabled = process.env.DARIBAR_ENABLED;
   const previousOrigin = process.env.DARIBAR_AUTH_API_URL;
   const previousNetwork = process.env.DARIBAR_NETWORK_CODE;
-  const sku = "SKU-NETWORK-ERROR";
+  const sku = daribarUuid("SKU-NETWORK-ERROR");
   try {
     process.env.DARIBAR_ENABLED = "true";
     process.env.DARIBAR_AUTH_API_URL = "https://prod-backoffice.daribar.com";

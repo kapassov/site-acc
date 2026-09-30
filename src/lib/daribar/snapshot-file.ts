@@ -145,7 +145,7 @@ function validateDocument(value: unknown): DaribarCatalogSnapshotDocument {
       || !safeInteger(value.invalidSkuCount, 0, MAX_PRODUCTS)
       || value.rawCount !== value.uniqueCount + value.duplicateCount + value.invalidSkuCount
       || value.totalCount < value.uniqueCount
-      || value.uniqueCount < Math.floor(value.totalCount * 0.9)
+      || value.rawCount < Math.floor(value.totalCount * 0.9)
       || !validateProducts(value.products, value.uniqueCount)) {
     throw new DaribarSnapshotFileError("daribar_snapshot_invalid");
   }

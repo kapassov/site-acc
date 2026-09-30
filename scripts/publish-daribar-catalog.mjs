@@ -127,9 +127,10 @@ export async function publishDaribarCatalog(options = {}) {
       INSERT INTO daribar_catalog_runs (
         id, status, city, generated_at, source_count, normalized_count, checksum, metrics
       ) VALUES ($1, 'staging', $2, $3, $4, 0, $5, $6::jsonb)
-    `, [runId, snapshot.city, snapshot.generatedAt, snapshot.uniqueCount, digest, JSON.stringify({
+    `, [runId, snapshot.city, snapshot.generatedAt, snapshot.totalCount, digest, JSON.stringify({
       schema: snapshot.schema,
       raw_count: snapshot.rawCount,
+      eligible_uuid_count: snapshot.uniqueCount,
       duplicate_count: snapshot.duplicateCount,
       invalid_sku_count: snapshot.invalidSkuCount,
       pages_fetched: snapshot.pagesFetched,
@@ -214,4 +215,3 @@ if (isMain) {
     process.exitCode = 1;
   });
 }
-

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { prescriptionCheckoutAllowed } from "../src/lib/checkout/prescription-policy.ts";
 import { readDaribarCatalogPrescriptionFlags } from "../src/lib/daribar/catalog-db.ts";
+import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 test("prescription baskets require pickup and cash, including mixed baskets", () => {
   for (const fulfillment of ["pickup", "pharmacy"]) {
@@ -14,14 +15,15 @@ test("prescription baskets require pickup and cash, including mixed baskets", ()
 });
 
 test("server reads prescription flags only from the active published catalogue", async () => {
+  const rx = daribarUuid("RX-1"), otc = daribarUuid("OTC-1");
   let query = "", params;
   const database = { query: async (sql, values) => {
     query = sql; params = values;
-    return { rows: [{ sku: "RX-1", prescription: true }, { sku: "OTC-1", prescription: false }] };
+    return { rows: [{ sku: rx, prescription: true }, { sku: otc, prescription: false }] };
   } };
-  const flags = await readDaribarCatalogPrescriptionFlags(["RX-1", "OTC-1"], database);
-  assert.deepEqual([...flags], [["RX-1", true], ["OTC-1", false]]);
-  assert.deepEqual(params, [["RX-1", "OTC-1"]]);
+  const flags = await readDaribarCatalogPrescriptionFlags([rx, otc], database);
+  assert.deepEqual([...flags], [[rx, true], [otc, false]]);
+  assert.deepEqual(params, [[rx, otc]]);
   assert.match(query, /state\.active_run_id/);
   assert.match(query, /run\.status = 'published'/);
 });

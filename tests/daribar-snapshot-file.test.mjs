@@ -13,10 +13,11 @@ import {
   collectProviderCatalog,
   fetchJsonWithRetry,
 } from "../scripts/sync-daribar-catalog.mjs";
+import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 function fixtureProducts(count, offset = 0) {
   return Array.from({ length: count }, (_, index) => ({
-    sku: `SNAP-${offset + index + 1}`,
+    sku: daribarUuid(`SNAP-${offset + index + 1}`),
     name: `Товар ${offset + index + 1}`,
     categories_ids: ["145"],
   }));
@@ -67,9 +68,21 @@ test("Daribar snapshot collector uses provider totals, bounded concurrency and c
   assert.equal(peak, 2);
   assert.equal(result.totalCount, 5);
   assert.equal(result.pagesFetched, 3);
-  assert.deepEqual(result.products.map((product) => product.sku), [
-    "SNAP-1", "SNAP-2", "SNAP-3", "SNAP-4", "SNAP-5",
-  ]);
+  assert.deepEqual(result.products.map((product) => product.sku), [1, 2, 3, 4, 5]
+    .map((value) => daribarUuid(`SNAP-${value}`)));
+});
+
+test("Daribar snapshot quarantines numeric Standard IDs while preserving provider completeness", async () => {
+  const uuid = daribarUuid("UUID-ONLY");
+  const result = await collectProviderCatalog(async () => ({
+    current_page: 1,
+    total_count: 3,
+    total_pages: 1,
+    products: [{ sku: uuid, name: "UUID" }, { sku: "1234567890", name: "Standard" }, { sku: "legacy", name: "Legacy" }],
+  }), { pageSize: 10, concurrency: 1 });
+  assert.deepEqual(result.products.map((product) => product.sku), [uuid]);
+  assert.equal(result.invalidSkuCount, 2);
+  assert.equal(result.rawCount, 3);
 });
 
 test("Daribar snapshot collector refuses partial provider pagination", async () => {

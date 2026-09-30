@@ -15,6 +15,9 @@ import { DaribarCheckoutError } from '../src/lib/daribar/checkout.ts';
 import { DaribarDeliveryError, deliveryDestinationHash } from '../src/lib/daribar/delivery.ts';
 import { DaribarDeliveryClaimError } from '../src/lib/daribar/delivery-claim.ts';
 import { daribarProductId, daribarVariantId } from '../src/lib/daribar/ids.ts';
+import { daribarUuid } from './daribar-uuid-fixture.mjs';
+
+const DELIVERY_SKU=daribarUuid('1234567890');
 import { checkoutStockStillMatches } from '../src/lib/checkout-stock-recheck.ts';
 import { DaribarStockQuoteError } from '../src/lib/daribar/stock-quote.ts';
 
@@ -113,9 +116,10 @@ test('prescription checkout creates only a pickup cash order, never courier or c
   assert.ok(!courier.calls.some(call=>call[0]==='medusa'));
 });
 test('Daribar storefront accepts native SKU cart and rejects an old Medusa cart',async()=>{
-  const nativeItems=[{productId:daribarProductId('SKU-NATIVE'),variantId:daribarVariantId('SKU-NATIVE'),quantity:2}];
+  const sku=daribarUuid('SKU-NATIVE');
+  const nativeItems=[{productId:daribarProductId(sku),variantId:daribarVariantId(sku),quantity:2}];
   const signed={...quote(),source:'daribar',fulfillment:'pickup',lines:[{
-    ...nativeItems[0],wareId:'SKU-NATIVE',unitPrice:377.89,total:755.78,
+    ...nativeItems[0],wareId:sku,unitPrice:377.89,total:755.78,
   }]};
   const f=fixture({daribar:true,catalogProvider:'daribar',quote:signed});
   assert.equal((await f.POST(request({cartItems,delivery:'pickup'}))).status,409);
@@ -137,7 +141,7 @@ test('changed live Daribar stock releases the attempt before creating a provider
 test('Daribar courier checkout creates both the commercial order and courier claim',async()=>{
   const destination='Тест 1';
   const signed={...quote(),delivery:{mode:'pharmacy',provider:'yandex',deliveryType:'on_demand',
-    price:500,itemsPrice:755.78,orderItems:[{sku:'1234567890',countDesired:2,pharmacyCount:5}],
+    price:500,itemsPrice:755.78,orderItems:[{sku:DELIVERY_SKU,countDesired:2,pharmacyCount:5}],
     eta:30,distance:2.5,daribarSourceCode:'pharmacy-1',pharmacyId:'sloc_A1',
     destinationHash:deliveryDestinationHash('Алматы',destination),quotedAt:new Date().toISOString()}};
   const f=fixture({daribar:true,quote:signed});
@@ -153,7 +157,7 @@ test('Daribar courier checkout creates both the commercial order and courier cla
 test('failed courier claim does not hide an already-issued hosted payment link',async()=>{
   const destination='Тест 1';
   const signed={...quote(),delivery:{mode:'pharmacy',provider:'yandex',deliveryType:'on_demand',
-    price:500,itemsPrice:755.78,orderItems:[{sku:'1234567890',countDesired:2,pharmacyCount:5}],
+    price:500,itemsPrice:755.78,orderItems:[{sku:DELIVERY_SKU,countDesired:2,pharmacyCount:5}],
     eta:30,distance:2.5,daribarSourceCode:'pharmacy-1',pharmacyId:'sloc_A1',
     destinationHash:deliveryDestinationHash('Алматы',destination),quotedAt:new Date().toISOString()}};
   const f=fixture({daribar:true,quote:signed,paymentUrl:'https://pay.daribar.kz/session',
@@ -172,7 +176,7 @@ test('failed courier claim does not hide an already-issued hosted payment link',
 test('missing Daribar payment link fails before courier booking and is replay-safe',async()=>{
   const destination='Тест 1';
   const signed={...quote(),delivery:{mode:'pharmacy',provider:'yandex',deliveryType:'on_demand',
-    price:500,itemsPrice:755.78,orderItems:[{sku:'1234567890',countDesired:2,pharmacyCount:5}],
+    price:500,itemsPrice:755.78,orderItems:[{sku:DELIVERY_SKU,countDesired:2,pharmacyCount:5}],
     eta:30,distance:2.5,daribarSourceCode:'pharmacy-1',pharmacyId:'sloc_A1',
     destinationHash:deliveryDestinationHash('Алматы',destination),quotedAt:new Date().toISOString()}};
   const f=fixture({daribar:true,quote:signed});
@@ -185,7 +189,7 @@ test('missing Daribar payment link fails before courier booking and is replay-sa
 test('cash checkout still fails closed when courier booking fails',async()=>{
   const destination='Тест 1';
   const signed={...quote(),delivery:{mode:'pharmacy',provider:'yandex',deliveryType:'on_demand',
-    price:500,itemsPrice:755.78,orderItems:[{sku:'1234567890',countDesired:2,pharmacyCount:5}],
+    price:500,itemsPrice:755.78,orderItems:[{sku:DELIVERY_SKU,countDesired:2,pharmacyCount:5}],
     eta:30,distance:2.5,daribarSourceCode:'pharmacy-1',pharmacyId:'sloc_A1',
     destinationHash:deliveryDestinationHash('Алматы',destination),quotedAt:new Date().toISOString()}};
   const f=fixture({daribar:true,quote:signed,
