@@ -147,7 +147,7 @@ export async function checkCode(
   return checked;
 }
 
-type SmsResult = { ok: boolean; error?: string };
+type SmsResult = { ok: boolean; error?: string; messageId?: string };
 
 export function smscResponseResult(
   httpOk: boolean,
@@ -164,6 +164,32 @@ export function smscResponseResult(
     return { ok: false, error: "smsc_invalid_response" };
   }
   return { ok: true };
+}
+
+export function p1smsDeliveryResponseResult(
+  httpOk: boolean,
+  status: number,
+  data: unknown,
+  expectedMessageId: string,
+): SmsResult {
+  if (!httpOk) return { ok: false, error: `http_${status}` };
+  const rows = Array.isArray(data)
+    ? data
+    : data && typeof data === "object" && Array.isArray((data as { data?: unknown }).data)
+      ? (data as { data: unknown[] }).data
+      : [];
+  const row = rows.find((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    return String(record.sms_id ?? record.id ?? "") === expectedMessageId;
+  });
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    return { ok: false, error: "p1sms_status_missing" };
+  }
+  const record = row as Record<string, unknown>;
+  const deliveryStatus = String(record.sms_status ?? record.status ?? "").toLowerCase();
+  if (deliveryStatus === "sent" || deliveryStatus === "delivered") return { ok: true };
+  return { ok: false, error: "p1sms_not_sent" };
 }
 
 export function p1smsResponseResult(
@@ -196,7 +222,7 @@ export function p1smsResponseResult(
   if (!hasMessageId || messageStatus !== "sent") {
     return { ok: false, error: "p1sms_invalid_response" };
   }
-  return { ok: true };
+  return { ok: true, messageId: String(messageId) };
 }
 
 async function sendViaSmsc(phone: string, text: string): Promise<SmsResult> {
@@ -255,7 +281,32 @@ async function sendViaP1Sms(phone: string, text: string): Promise<SmsResult> {
       signal: controller.signal,
     });
     const data = await res.json().catch(() => ({} as Record<string, unknown>));
-    return p1smsResponseResult(res.ok, res.status, data as Record<string, unknown>);
+    const created = p1smsResponseResult(res.ok, res.status, data as Record<string, unknown>);
+    if (!created.ok || !created.messageId) return created;
+
+    // P1SMS initially reports "sent" even when the message is moved to account
+    // moderation a moment later. OTP must not become active until the status API
+    // confirms that the message is still in the actual delivery pipeline.
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    const statusUrl = new URL("https://admin.p1sms.kz/apiSms/getSmsStatus");
+    statusUrl.searchParams.set("apiKey", apiKey);
+    statusUrl.searchParams.set("smsId[0]", created.messageId);
+    const statusController = new AbortController();
+    const statusTimeout = setTimeout(() => statusController.abort(), 5_000);
+    try {
+      const statusResponse = await fetch(statusUrl, { signal: statusController.signal });
+      const statusData = await statusResponse.json().catch(() => [] as unknown[]);
+      return p1smsDeliveryResponseResult(
+        statusResponse.ok,
+        statusResponse.status,
+        statusData,
+        created.messageId,
+      );
+    } catch {
+      return { ok: false, error: "p1sms_status_unavailable" };
+    } finally {
+      clearTimeout(statusTimeout);
+    }
   } catch {
     return { ok: false, error: "p1sms_unavailable" };
   } finally {

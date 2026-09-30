@@ -50,8 +50,12 @@ export async function POST(req: Request) {
       status: 503, headers: NO_STORE,
     });
   }
-  // Короткий латинский шаблон устойчив к ограничениям неподтвержденных SMS-шаблонов.
-  const text = `AptekaSoSklada: ${code}`;
+  // P1SMS digit is the emergency OTP route for accounts without an approved
+  // alphabetic sender. Keep it code-only so no unregistered brand text can
+  // trigger content moderation; approved named providers retain the brand.
+  const isP1Digit = String(process.env.SMS_PROVIDER || "").toLowerCase() === "p1sms"
+    && String(process.env.P1SMS_CHANNEL || "digit").toLowerCase() === "digit";
+  const text = isP1Digit ? code : `AptekaSoSklada: ${code}`;
   const r = await sendSms(phone, text);
   if (!r.ok) {
     await discardCode(phone, code).catch(() => undefined);
