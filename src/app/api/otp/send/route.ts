@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   activateCode,
-  discardCode,
+  deferCode,
   genCode,
   reserveCode,
   sendSms,
@@ -58,11 +58,12 @@ export async function POST(req: Request) {
   const text = isP1Digit ? code : `AptekaSoSklada: ${code}`;
   const r = await sendSms(phone, text);
   if (!r.ok) {
-    await discardCode(phone, code).catch(() => undefined);
+    const retryAfter = Math.max(30, Math.min(Number(r.retryAfter) || 30, 300));
+    await deferCode(phone, code, retryAfter * 1000).catch(() => undefined);
     console.error("OTP provider send failed", { reason: r.error || "unknown" });
     return NextResponse.json(
-      { ok: false, sent: false, error: "provider_unavailable" },
-      { status: 502, headers: NO_STORE },
+      { ok: false, sent: false, error: "provider_unavailable", retryAfter },
+      { status: 502, headers: { ...NO_STORE, "retry-after": String(retryAfter) } },
     );
   }
   if (!await activateCode(phone, code).catch(() => false)) {

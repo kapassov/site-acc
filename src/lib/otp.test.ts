@@ -5,6 +5,7 @@ import {
   genCode,
   p1smsDeliveryResponseResult,
   p1smsResponseResult,
+  smscPasswordValue,
   smscResponseResult,
 } from "./otp.ts";
 
@@ -30,6 +31,19 @@ test("SMSC errors are normalized without upstream private text", () => {
     ok: false,
     error: "smsc_3",
   });
+  assert.deepEqual(smscResponseResult(true, 200, { error_code: 4, error: "private" }), {
+    ok: false,
+    error: "smsc_4",
+    retryAfter: 300,
+  });
+});
+
+test("SMSC password survives build-unsafe characters through strict base64", () => {
+  const password = "build$unsafe\\secret";
+  const encoded = Buffer.from(password, "utf8").toString("base64");
+  assert.equal(smscPasswordValue(encoded, "fallback"), password);
+  assert.equal(smscPasswordValue(undefined, "fallback"), "fallback");
+  assert.equal(smscPasswordValue("not-base64", "fallback"), undefined);
 });
 
 test("P1SMS accepts only a message the provider reports as sent", () => {

@@ -10,6 +10,12 @@ const TTL_MS = 5 * 60 * 1000; // код живёт 5 минут
 const RESEND_MS = 30 * 1000; // не чаще раза в 30с
 const MAX_ATTEMPTS = 5;
 
+function runtimeVariable(name: string): string | undefined {
+  // Dynamic lookup keeps server-only credentials out of build-time env
+  // expansion. This matters for secrets containing "$".
+  return process.env[name];
+}
+
 function digestCode(phone: string, code: string): string {
   const secret = process.env.CUSTOMER_AUTH_SECRET || "";
   if (!isStrongRuntimeSecret(secret)) throw new Error("customer_auth_secret_missing");
@@ -88,6 +94,19 @@ export async function discardCode(phone: string, code: string): Promise<void> {
   );
 }
 
+/** Keeps a failed provider reservation pending so retries cannot hammer a
+ * temporarily blocked gateway. Pending codes are never accepted for login. */
+export async function deferCode(phone: string, code: string, delayMs: number): Promise<void> {
+  const boundedDelay = Math.max(RESEND_MS, Math.min(Math.trunc(delayMs), TTL_MS));
+  const db = await ordersDatabasePool();
+  await db.query(`
+    UPDATE customer_otp_challenges
+    SET resend_available_at = GREATEST(resend_available_at, $3),
+        updated_at = clock_timestamp()
+    WHERE phone = $1 AND code_digest = $2 AND state = 'pending'
+  `, [phone, digestCode(phone, code), new Date(Date.now() + boundedDelay)]);
+}
+
 /** Validate an OTP without consuming it. Customer login consumes only after
  * Medusa has completed, so an upstream timeout does not burn a valid SMS. */
 export async function validateCode(
@@ -147,7 +166,7 @@ export async function checkCode(
   return checked;
 }
 
-type SmsResult = { ok: boolean; error?: string; messageId?: string };
+type SmsResult = { ok: boolean; error?: string; messageId?: string; retryAfter?: number };
 
 export function smscResponseResult(
   httpOk: boolean,
@@ -155,15 +174,30 @@ export function smscResponseResult(
   data: Record<string, unknown>,
 ): SmsResult {
   if (!httpOk || data.error || data.error_code) {
+    const errorCode = data.error_code ? String(data.error_code).slice(0, 24) : null;
     return {
       ok: false,
-      error: data.error_code ? `smsc_${String(data.error_code).slice(0, 24)}` : `http_${status}`,
+      error: errorCode ? `smsc_${errorCode}` : `http_${status}`,
+      ...(errorCode === "4" ? { retryAfter: 300 } : {}),
     };
   }
   if (data.id === undefined && data.cnt === undefined) {
     return { ok: false, error: "smsc_invalid_response" };
   }
   return { ok: true };
+}
+
+export function smscPasswordValue(encoded: string | undefined, fallback: string | undefined): string | undefined {
+  const value = encoded?.trim();
+  if (!value) return fallback;
+  if (value.length > 16_384 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    return undefined;
+  }
+  const decoded = Buffer.from(value, "base64");
+  if (decoded.toString("base64") !== value) return undefined;
+  const text = decoded.toString("utf8");
+  if (!text || Buffer.from(text, "utf8").toString("base64") !== value) return undefined;
+  return text;
 }
 
 export function p1smsDeliveryResponseResult(
@@ -226,9 +260,12 @@ export function p1smsResponseResult(
 }
 
 async function sendViaSmsc(phone: string, text: string): Promise<SmsResult> {
-  const login = process.env.SMSC_LOGIN?.trim();
-  const password = process.env.SMSC_PASSWORD;
-  const apiKey = process.env.SMSC_API_KEY;
+  const login = runtimeVariable("SMSC_LOGIN")?.trim();
+  const password = smscPasswordValue(
+    runtimeVariable("SMSC_PASSWORD_B64"),
+    runtimeVariable("SMSC_PASSWORD"),
+  );
+  const apiKey = runtimeVariable("SMSC_API_KEY");
   if ((!login || !password) && !apiKey) return { ok: false, error: "smsc_credentials_missing" };
 
   const form = new URLSearchParams({
@@ -242,7 +279,7 @@ async function sendViaSmsc(phone: string, text: string): Promise<SmsResult> {
     form.set("login", login!);
     form.set("psw", password!);
   }
-  const sender = process.env.SMSC_SENDER?.trim();
+  const sender = runtimeVariable("SMSC_SENDER")?.trim();
   if (sender) form.set("sender", sender);
 
   const controller = new AbortController();
@@ -265,10 +302,10 @@ async function sendViaSmsc(phone: string, text: string): Promise<SmsResult> {
 
 /** Legacy P1SMS adapter retained for rollback while SMSC.kz is the active provider. */
 async function sendViaP1Sms(phone: string, text: string): Promise<SmsResult> {
-  const apiKey = process.env.P1SMS_API_KEY;
+  const apiKey = runtimeVariable("P1SMS_API_KEY");
   if (!apiKey) return { ok: false, error: "no_api_key" };
-  const channel = process.env.P1SMS_CHANNEL || "digit";
-  const sender = process.env.P1SMS_SENDER;
+  const channel = runtimeVariable("P1SMS_CHANNEL") || "digit";
+  const sender = runtimeVariable("P1SMS_SENDER");
   const sms: Record<string, unknown> = { channel, text, phone };
   if (sender && channel !== "digit") sms.sender = sender;
   const controller = new AbortController();
@@ -315,7 +352,10 @@ async function sendViaP1Sms(phone: string, text: string): Promise<SmsResult> {
 }
 
 export async function sendSms(phone: string, text: string): Promise<SmsResult> {
-  const provider = String(process.env.SMS_PROVIDER || (process.env.SMSC_PASSWORD || process.env.SMSC_API_KEY ? "smsc" : "p1sms"))
+  const provider = String(runtimeVariable("SMS_PROVIDER")
+    || (runtimeVariable("SMSC_PASSWORD_B64") || runtimeVariable("SMSC_PASSWORD") || runtimeVariable("SMSC_API_KEY")
+      ? "smsc"
+      : "p1sms"))
     .trim()
     .toLowerCase();
   return provider === "smsc" ? sendViaSmsc(phone, text) : sendViaP1Sms(phone, text);

@@ -183,6 +183,8 @@ test("first-party OTP route has bounded input, PostgreSQL state and no Daribar c
   assert.match(sendRoute, /await reserveCode\(phone, code\)/);
   assert.match(sendRoute, /await sendSms\(phone, text\)/);
   assert.match(sendRoute, /await activateCode\(phone, code\)/);
+  assert.match(sendRoute, /await deferCode\(phone, code, retryAfter \* 1000\)/);
+  assert.doesNotMatch(sendRoute, /discardCode/);
   assert.doesNotMatch(sendRoute, /sendDaribarOtp|verifyDaribarOtp|daribar\/auth/);
   assert.match(sendRoute, /["']@\/lib\/otp["']/);
   assert.match(verifyRoute, /status: 410/);
