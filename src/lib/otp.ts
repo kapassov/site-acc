@@ -166,6 +166,39 @@ export function smscResponseResult(
   return { ok: true };
 }
 
+export function p1smsResponseResult(
+  httpOk: boolean,
+  status: number,
+  data: Record<string, unknown>,
+): SmsResult {
+  if (!httpOk) return { ok: false, error: `http_${status}` };
+  if (data.status !== "success") return { ok: false, error: "p1sms_rejected" };
+
+  const messages = Array.isArray(data.data) ? data.data : [];
+  const first = messages[0];
+  if (!first || typeof first !== "object" || Array.isArray(first)) {
+    return { ok: false, error: "p1sms_invalid_response" };
+  }
+
+  const message = first as Record<string, unknown>;
+  const messageStatus = typeof message.status === "string" ? message.status.toLowerCase() : "";
+  const messageErrors = message.errors;
+  const hasErrors = Array.isArray(messageErrors)
+    ? messageErrors.length > 0
+    : messageErrors !== undefined && messageErrors !== null && messageErrors !== "";
+  if (hasErrors || messageStatus === "error" || messageStatus === "not_sent") {
+    return { ok: false, error: "p1sms_message_error" };
+  }
+
+  const messageId = message.id;
+  const hasMessageId = (typeof messageId === "number" && Number.isFinite(messageId))
+    || (typeof messageId === "string" && messageId.trim().length > 0);
+  if (!hasMessageId || !["sent", "queued", "moderation"].includes(messageStatus)) {
+    return { ok: false, error: "p1sms_invalid_response" };
+  }
+  return { ok: true };
+}
+
 async function sendViaSmsc(phone: string, text: string): Promise<SmsResult> {
   const login = process.env.SMSC_LOGIN?.trim();
   const password = process.env.SMSC_PASSWORD;
@@ -222,21 +255,7 @@ async function sendViaP1Sms(phone: string, text: string): Promise<SmsResult> {
       signal: controller.signal,
     });
     const data = await res.json().catch(() => ({} as Record<string, unknown>));
-    // P1SMS может вернуть общий status:"success", но ошибку по конкретному SMS внутри data[].
-    // Считаем успехом только если по сообщению нет ошибки (sent/queued/moderation — ок).
-    const first = Array.isArray((data as { data?: unknown[] })?.data) ? (data as { data: Array<Record<string, unknown>> }).data[0] : undefined;
-    const msgStatus = first?.status as string | undefined;
-    const msgErrors = first?.errors;
-    const failed =
-      !res.ok ||
-      (data as { status?: string })?.status === "error" ||
-      msgStatus === "error" ||
-      msgStatus === "not_sent" ||
-      (Array.isArray(msgErrors) && msgErrors.length > 0);
-    if (failed) {
-      return { ok: false, error: `p1sms_${res.status}` };
-    }
-    return { ok: true };
+    return p1smsResponseResult(res.ok, res.status, data as Record<string, unknown>);
   } catch {
     return { ok: false, error: "p1sms_unavailable" };
   } finally {
