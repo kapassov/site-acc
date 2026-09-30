@@ -85,8 +85,10 @@ test("Daribar storefront availability is refreshed into PostgreSQL in the backgr
     readFile(new URL("../deploy/systemd/inkar-shop-daribar-availability.service", import.meta.url), "utf8"),
     readFile(new URL("../deploy/systemd/inkar-shop-daribar-availability.timer", import.meta.url), "utf8"),
   ]);
-  assert.match(unit, /^ExecStart=.*sync-daribar-availability\.mjs$/m);
-  assert.match(unit, /^EnvironmentFile=\/etc\/inkar-shop\.env$/m);
+  assert.match(unit, /^ExecStart=.*flock.*sync-daribar-availability\.mjs$/m);
+  assert.match(unit, /^EnvironmentFile=\/var\/www\/inkar-shop\/\.env\.local$/m);
+  assert.match(unit, /^WorkingDirectory=\/var\/www\/inkar-shop$/m);
+  assert.match(unit, /^TimeoutStartSec=7200$/m);
   assert.match(timer, /^OnUnitActiveSec=15m$/m);
   assert.match(timer, /^Persistent=true$/m);
 });

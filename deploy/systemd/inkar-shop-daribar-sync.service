@@ -5,14 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=inkar-shop
-Group=inkar-shop
-WorkingDirectory=/var/www/inkar-shop/current
-EnvironmentFile=/etc/inkar-shop.env
-ExecStart=/usr/bin/node scripts/sync-daribar-stack.mjs
+User=root
+WorkingDirectory=/var/www/inkar-shop
+EnvironmentFile=/var/www/inkar-shop/.env.local
+Environment=NODE_OPTIONS=--max-old-space-size=2048
+ExecStart=/usr/bin/flock -n /var/lock/inkar-shop-daribar-sync.lock /opt/node-v24.21.0-linux-x64/bin/node --env-file=/var/www/inkar-shop/.env.local /var/www/inkar-shop/scripts/sync-daribar-stack.mjs
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+TimeoutStartSec=14400
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
