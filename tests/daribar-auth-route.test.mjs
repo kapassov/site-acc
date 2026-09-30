@@ -4,40 +4,43 @@ import test from "node:test";
 
 const sendRoute = readFileSync("src/app/api/otp/send/route.ts", "utf8");
 const customerRoute = readFileSync("src/app/api/customer/route.ts", "utf8");
-const daribarAuth = readFileSync("src/lib/daribar/auth.ts", "utf8");
+const otpStore = readFileSync("src/lib/otp.ts", "utf8");
+const migration = readFileSync("db/migrations/029_customer_otp_challenges.sql", "utf8");
 
-test("OTP send route is Daribar-only with no local-code fallback", () => {
-  assert.match(sendRoute, /sendDaribarOtp\(phone\)/);
-  assert.doesNotMatch(sendRoute, /genCode|reserveCode|sendSms|P1SMS/);
+test("OTP is sent by our backend through SMSC and persisted before activation", () => {
+  assert.match(sendRoute, /await reserveCode\(phone, code\)/);
+  assert.match(sendRoute, /await sendSms\(phone, text\)/);
+  assert.match(sendRoute, /await activateCode\(phone, code\)/);
+  assert.doesNotMatch(sendRoute, /sendDaribarOtp|verifyDaribarOtp/);
+  assert.match(otpStore, /https:\/\/smsc\.kz\/sys\/send\.php/);
 });
 
-test("customer login verifies Daribar and stores only server cookies", () => {
-  assert.match(customerRoute, /tokens = await verifyDaribarOtp\(phone, code\)/);
-  assert.match(customerRoute, /setDaribarAuthCookies\(response, tokens\)/);
-  assert.doesNotMatch(customerRoute, /getOrCreatePhone|store\/customers|withToken/);
+test("OTP values are stored in our PostgreSQL only as keyed digests", () => {
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS customer_otp_challenges/);
+  assert.match(migration, /code_digest text NOT NULL/);
+  assert.doesNotMatch(migration, /\bcode\s+text/i);
+  assert.match(otpStore, /createHmac\("sha256", secret\)/);
+  assert.match(otpStore, /ordersDatabasePool\(\)/);
 });
 
-test("logout and successful account deletion clear Daribar cookies", () => {
-  assert.match(customerRoute, /function clearSession/);
-  assert.match(customerRoute, /clearDaribarAuthCookies\(response\)/);
-  const clears = customerRoute.match(/clearSession\(response\)/g) || [];
-  assert.ok(clears.length >= 2);
+test("customer login verifies our OTP and creates a Medusa customer session", () => {
+  assert.match(customerRoute, /checked = await validateCode\(phone, code\)/);
+  assert.match(customerRoute, /await getOrCreateCustomer\(phone\)/);
+  assert.match(customerRoute, /await consumeCode\(phone, code\)/);
+  assert.match(customerRoute, /response\.cookies\.set\(CUSTOMER_COOKIE, result\.token, cookieOptions\)/);
+  assert.match(customerRoute, /httpOnly: true/);
+  assert.doesNotMatch(customerRoute, /verifyDaribarOtp|getDaribarUser|setDaribarAuthCookies|daribar\/auth/);
 });
 
-test("Daribar auth follows the documented SMS and token contracts", () => {
-  assert.match(daribarAuth, /"\/api\/v2\/sms"/);
-  assert.match(daribarAuth, /body: \{ phone, sms_type: "auth" \}/);
-  assert.match(daribarAuth, /"\/api\/v2\/auth"/);
-  assert.doesNotMatch(daribarAuth, /X-Turnstile-Token|\/api\/v1\/(?:web\/)?users\/sms/);
-  assert.match(daribarAuth, /"\/api\/v1\/logout"/);
-  assert.match(daribarAuth, /validation_code: normalizedCode/);
+test("login and logout clear legacy Daribar customer cookies", () => {
+  assert.match(customerRoute, /function clearLegacySessions/);
+  assert.match(customerRoute, /LEGACY_DARIBAR_ACCESS_COOKIE = "daribar_access"/);
+  assert.match(customerRoute, /LEGACY_DARIBAR_REFRESH_COOKIE = "daribar_refresh"/);
+  const clears = customerRoute.match(/clearLegacySessions\(response\)/g) || [];
+  assert.ok(clears.length >= 3);
 });
 
-test("Daribar credentials stay in HttpOnly server cookies", () => {
-  assert.match(daribarAuth, /httpOnly: true/);
-  assert.match(daribarAuth, /DARIBAR_ACCESS_COOKIE/);
-  assert.match(daribarAuth, /DARIBAR_REFRESH_COOKIE/);
-  assert.doesNotMatch(daribarAuth, /NEXT_PUBLIC_DARIBAR/);
-  assert.doesNotMatch(customerRoute, /accessToken[^\n]+NextResponse\.json/);
-  assert.doesNotMatch(customerRoute, /refreshToken[^\n]+NextResponse\.json/);
+test("contact email cannot replace the synthetic authentication identifier", () => {
+  assert.match(customerRoute, /contact_email: email \|\| null/);
+  assert.doesNotMatch(customerRoute, /patch\.email\s*=/);
 });

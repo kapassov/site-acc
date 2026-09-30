@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { setDaribarAuthCookies } from "@/lib/daribar/auth";
 import {
   loadPaymentSessionForRequest,
   PaymentSessionAccessError,
@@ -66,12 +65,10 @@ function isSameOriginBrowserPost(request: Request): boolean {
 }
 
 function errorResponse(error: PaymentSessionAccessError): NextResponse {
-  const response = NextResponse.json({ error: error.code }, {
+  return NextResponse.json({ error: error.code }, {
     status: error.status,
     headers: PRIVATE_HEADERS,
   });
-  if (error.rotatedTokens) setDaribarAuthCookies(response, error.rotatedTokens);
-  return response;
 }
 
 export async function POST(
@@ -92,7 +89,6 @@ export async function POST(
     // payment provider.
     const response = NextResponse.redirect(result.session.redirect, 303);
     for (const [name, value] of Object.entries(PRIVATE_HEADERS)) response.headers.set(name, value);
-    if (result.rotatedTokens) setDaribarAuthCookies(response, result.rotatedTokens);
     return response;
   } catch (error) {
     if (error instanceof PaymentSessionAccessError) return errorResponse(error);

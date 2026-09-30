@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import * as items from '../src/lib/checkoutItems.ts';
 import * as bodyReader from '../src/lib/httpBody.ts';
-import * as identity from '../src/lib/daribar/customer-identity.ts';
 import * as money from '../src/lib/money.ts';
 import * as cities from '../src/lib/i18n/cities.ts';
 import * as deliveryDetails from '../src/lib/checkout/delivery-details.ts';
@@ -31,7 +30,7 @@ function fixture(options={}) {
   const order={id:'order_A1',display_id:1,created_at:new Date().toISOString(),total:signed.total,currency_code:'kzt',items:[],customer_id:'cus_native'};
   const modules={
     'node:crypto': awaitlessCrypto,
-    'next/headers':{cookies:async()=>({get:name=>name==='daribar_access'&&!options.noAuth?{value:'verified-session'}:undefined,delete:()=>{}})},
+    'next/headers':{cookies:async()=>({get:()=>undefined,delete:()=>{}})},
     'next/server':{NextResponse:{json:(body,config)=>Response.json(body,config)}},
     '@/lib/rateLimit':{clientIp:()=> 'test',rateLimit:()=>true},
     '@/lib/httpBody':bodyReader,'@/lib/checkoutItems':items,'@/lib/money':money,'@/lib/i18n/cities':cities,
@@ -44,20 +43,20 @@ function fixture(options={}) {
     '@/lib/checkout/order-hours':{ordersAcceptingNow:()=>options.ordersOpen!==false},
     '@/lib/checkoutQuote':{CheckoutQuoteError,verifyCheckoutQuote:()=> options.invalidQuote?null:signed},
     '@/lib/checkout-stock-recheck':{checkoutStockStillMatches},
+    '@/lib/customerSession':{customerSession:async()=>options.noAuth?{status:'anonymous'}:{
+      status:'authenticated',customerId:'cus_native',token:'verified-session',phone:'77000000000',name:'',email:null,
+    }},
     '@/lib/daribar/stock-quote':{DaribarStockQuoteError,requestDaribarStockQuote:async input=>{
       calls.push(['live-stock-check',input]);
       if(options.stockError)throw options.stockError;
       return options.liveQuote??{...signed,currency:'KZT',lines:signed.lines.map(line=>({...line,availableQuantity:5}))};
     }},
-    '@/lib/daribar/auth':{DARIBAR_ACCESS_COOKIE:'daribar_access',DARIBAR_REFRESH_COOKIE:'daribar_refresh',
-      getDaribarUser:async()=>{calls.push(['auth']);return {phone:'77000000000'};},
-      refreshDaribarAuth:async()=>{throw Error('unexpected refresh')},setDaribarAuthCookies:()=>{}},
-    '@/lib/daribar/client':{DaribarHttpError},'@/lib/daribar/customer-identity':identity,
+    '@/lib/daribar/client':{DaribarHttpError},
     '@/lib/daribar/checkout':{DaribarCheckoutError},
     '@/lib/daribar/quote-order':{createDaribarOrderForQuote:async input=>{if(!options.daribar)throw Error('unexpected Daribar order');calls.push(['daribar-order',input]);return {id:'DARIBAR-ORDER-1',status:'new',...(options.paymentUrl?{paymentUrl:options.paymentUrl}:{})};}},
     '@/lib/daribar/delivery':{DaribarDeliveryError,deliveryDestinationHash},
     '@/lib/daribar/delivery-claim':{DaribarDeliveryClaimError,createDaribarDeliveryClaim:async input=>{if(!options.daribar)throw Error('unexpected Daribar claim');calls.push(['daribar-claim',input]);if(options.claimError)throw options.claimError;return {provider:'yandex',id:'CLAIM-1',status:'ready_for_approval',price:signed.delivery?.price};}},
-    '@/lib/daribar/config':{isDaribarEnabled:()=>Boolean(options.daribar),isDaribarDeliveryEnabled:()=>Boolean(options.daribar)},
+    '@/lib/daribar/config':{daribarServiceToken:()=> 'server-service-token-long-enough',isDaribarEnabled:()=>Boolean(options.daribar),isDaribarDeliveryEnabled:()=>Boolean(options.daribar)},
     '@/lib/orders/store':{recordCompletedDaribarOrder:async input=>{if(!options.daribar)throw Error('unexpected Daribar persistence');calls.push(['persist-daribar',input]);return {id:'local-order-1',n:1,date:'today',sum:input.total,status:'Создан',items:2,delivery:'courier'};},updateStoredOrderMetadata:async(id,metadata)=>{calls.push(['metadata',id,metadata]);return {id,n:1,date:'today',sum:signed.total,status:'Создан',items:2,delivery:'courier'};},recordCompletedMedusaOrder:async input=>{calls.push(['persist',input]);return {id:order.id,n:1,date:'today',sum:signed.total,status:'Создан',items:2,delivery:'courier'};}},
     '@/lib/payments/kassa':{kassaEnabled:()=>true,createKassaPayment:async stored=>{calls.push(['payment',stored]);if(options.paymentError)throw Error('private-provider-detail');return {redirect:'https://pay.kassa.com/private-token'};}},
     '@/lib/standardn-commerce':{StandardNCommerceError,medusaCommerce:async(path,body)=>{calls.push(['medusa',path,body]);const error=typeof options.providerError==='function'?options.providerError():options.providerError;if(error)throw error;return {order};}},
@@ -77,11 +76,11 @@ import * as awaitlessCrypto from 'node:crypto';
 const request=(extra={})=>new Request('https://shop.test/api/checkout',{method:'POST',headers:{'content-type':'application/json','x-idempotency-key':'test-checkout-1'},body:JSON.stringify({cartItems,quoteId:'signed',city:'Алматы',address:'Тест 1',delivery:'courier',payment:'cash',cartInstanceId:attemptId,phone:'77777777777',...extra})});
 process.env.CUSTOMER_AUTH_SECRET='test-only-customer-secret-at-least-32-characters';
 
-test('real SMS identity creates native Medusa order, preserving exact tiyn and account ownership',async()=>{
+test('first-party SMS identity creates native Medusa order, preserving exact tiyn and account ownership',async()=>{
   const f=fixture(),response=await f.POST(request());assert.equal(response.status,201);
   const call=f.calls.find(c=>c[0]==='medusa');assert.equal(call[1],'/store/standardn/orders');
   assert.equal(call[2].customer.phone,'77000000000');assert.equal(call[2].idempotencyKey,attemptId);
-  const saved=f.calls.find(c=>c[0]==='persist')[1];assert.match(saved.customerId,/^daribar:[a-f0-9]{64}$/);
+  const saved=f.calls.find(c=>c[0]==='persist')[1];assert.equal(saved.customerId,'cus_native');
   assert.equal(saved.metadata.provider,'medusa');assert.equal(saved.fallbackTotal,755.78);
   assert.ok(!f.calls.some(c=>c[0]==='payment'));
 });

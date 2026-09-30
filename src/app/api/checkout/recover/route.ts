@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { readCheckoutAttemptByKeyForActor } from "@/lib/checkout-attempts";
-import { setDaribarAuthCookies } from "@/lib/daribar/auth";
 import {
   authenticateCheckoutActorForRequest,
   PaymentSessionAccessError,
@@ -21,11 +20,8 @@ const PRIVATE_HEADERS = {
 function response(
   payload: Record<string, unknown>,
   status: number,
-  rotatedTokens: Parameters<typeof setDaribarAuthCookies>[1] | null = null,
 ): NextResponse {
-  const result = NextResponse.json(payload, { status, headers: PRIVATE_HEADERS });
-  if (rotatedTokens) setDaribarAuthCookies(result, rotatedTokens);
-  return result;
+  return NextResponse.json(payload, { status, headers: PRIVATE_HEADERS });
 }
 
 /**
@@ -38,25 +34,25 @@ export async function POST(request: Request) {
     const idempotencyKey = (request.headers.get("x-idempotency-key") || "").trim();
     const auth = await authenticateCheckoutActorForRequest(request);
     const attempt = await readCheckoutAttemptByKeyForActor(idempotencyKey, auth.actorKey);
-    if (!attempt) return response({ error: "checkout_attempt_not_found" }, 404, auth.rotatedTokens);
+    if (!attempt) return response({ error: "checkout_attempt_not_found" }, 404);
 
     const session = await resolveOrRenewPaymentSessionForActor(attempt.id, auth.actorKey, attempt);
     if (session) {
       return response({
         requiresAction: true,
         paymentSessionId: attempt.id,
-      }, 200, auth.rotatedTokens);
+      }, 200);
     }
     if (attempt.state === "pending") {
-      return response({ error: "checkout_in_progress" }, 409, auth.rotatedTokens);
+      return response({ error: "checkout_in_progress" }, 409);
     }
     if (attempt.state === "uncertain") {
-      return response({ error: "order_status_uncertain" }, 409, auth.rotatedTokens);
+      return response({ error: "order_status_uncertain" }, 409);
     }
-    return response({ error: "payment_link_unavailable", orderCreated: true }, 409, auth.rotatedTokens);
+    return response({ error: "payment_link_unavailable", orderCreated: true }, 409);
   } catch (error) {
     if (error instanceof PaymentSessionAccessError) {
-      return response({ error: error.code }, error.status, error.rotatedTokens);
+      return response({ error: error.code }, error.status);
     }
     console.error("[checkout-recovery] failed");
     return response({ error: "checkout_recovery_unavailable" }, 503);

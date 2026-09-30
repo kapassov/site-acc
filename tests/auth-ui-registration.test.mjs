@@ -23,7 +23,7 @@ test("registration modal is phone, OTP, then conditional profile", () => {
   assert.doesNotMatch(modal, /Демо-режим|Продолжить в демо|1\s*500|приветственн.*балл/i);
 });
 
-test("OTP UI follows Daribar code and resend contracts", () => {
+test("OTP UI follows our backend code and resend contracts", () => {
   assert.match(modal, /RESEND_DELAY_SECONDS = 30/);
   assert.match(modal, /isValidOtpCode\(code\)/);
   assert.match(modal, /maxLength=\{OTP_CODE_LENGTH\}/);

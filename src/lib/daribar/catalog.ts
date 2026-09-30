@@ -540,13 +540,11 @@ export async function getDaribarCatalogPage(query: CatalogQuery, city?: string, 
   const live = await hydrateDaribarCatalogPageStock(page.products, daribarCategoryCity(city));
   return {
     ...page,
-    // Never render an unavailable Daribar card. In production the page is
-    // filtered only after v3 has confirmed an exact SKU in a mapped ASS
-    // pharmacy; on a provider failure we fail closed instead of reviving the
-    // older aggregate availability from the catalogue snapshot.
-    products: live.authoritative
-      ? live.products.filter((product) => product.inStock && product.stockStale === false)
-      : live.complete ? live.products : [],
+    // Discovery includes the complete provider page. Exact live hydration
+    // marks missing offers as out of stock instead of deleting the product.
+    // During a provider outage the cards remain visible with stale stock and
+    // checkout still fails closed on its independent exact basket quote.
+    products: live.products,
     complete: page.complete && live.complete,
     stale: page.stale || !live.complete,
     ...(snapshot.search ? { search: snapshot.search, searchEngine: snapshot.searchEngine } : {}),

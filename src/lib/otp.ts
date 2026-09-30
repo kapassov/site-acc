@@ -1,124 +1,211 @@
-// OTP по SMS через P1SMS (admin.p1sms.kz). apiKey — серверный секрет, в клиент не уходит.
-// Коды держим в памяти процесса (для одного инстанса/дева достаточно). Для мульти-инстанса
-// вынести в Postgres/Redis. globalThis — чтобы пережить hot-reload Next dev.
+// OTP по SMS. Учетные данные провайдера — серверные секреты, в клиент не уходят.
+// Состояние проверки хранится в нашей PostgreSQL, код — только как HMAC-дайджест.
 
-import { randomInt } from "node:crypto";
-
-type Entry = {
-  code: string;
-  expires: number;
-  attempts: number;
-  state: "pending" | "active";
-};
-
-type Cooldown = {
-  code: string;
-  until: number;
-};
-
-const g = globalThis as unknown as {
-  __otp?: Map<string, Entry>;
-  __otpCooldowns?: Map<string, Cooldown>;
-};
-const store: Map<string, Entry> = (g.__otp ??= new Map());
-const cooldowns: Map<string, Cooldown> = (g.__otpCooldowns ??= new Map());
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { ordersDatabasePool } from "./orders/store.ts";
+import { OTP_CODE_LENGTH } from "./otpContract.ts";
+import { isStrongRuntimeSecret } from "./serverSecrets.ts";
 
 const TTL_MS = 5 * 60 * 1000; // код живёт 5 минут
 const RESEND_MS = 30 * 1000; // не чаще раза в 30с
 const MAX_ATTEMPTS = 5;
 
-/** Любой ввод → 11 цифр в формате 7XXXXXXXXXX (КЗ/РФ). */
-export function normalizePhone(raw: string): string {
-  let d = (raw || "").replace(/\D/g, "");
-  if (d.startsWith("8")) d = "7" + d.slice(1);
-  if (!d.startsWith("7")) d = "7" + d;
-  return d.slice(0, 11);
+function digestCode(phone: string, code: string): string {
+  const secret = process.env.CUSTOMER_AUTH_SECRET || "";
+  if (!isStrongRuntimeSecret(secret)) throw new Error("customer_auth_secret_missing");
+  return createHmac("sha256", secret).update(`${phone}:${code}`).digest("hex");
+}
+
+function equalDigest(left: string, right: string): boolean {
+  const a = Buffer.from(left, "hex");
+  const b = Buffer.from(right, "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function genCode(): string {
-  return String(randomInt(0, 1_000_000)).padStart(6, "0");
+  return String(randomInt(0, 10 ** OTP_CODE_LENGTH)).padStart(OTP_CODE_LENGTH, "0");
 }
 
 /** Можно ли слать сейчас (анти-флуд). */
-export function canSend(phone: string, now = Date.now()): boolean {
-  const cooldown = cooldowns.get(phone);
-  if (!cooldown) return true;
-  if (now >= cooldown.until) {
-    cooldowns.delete(phone);
-    return true;
-  }
-  return false;
+export async function canSend(phone: string, now = Date.now()): Promise<boolean> {
+  const db = await ordersDatabasePool();
+  const result = await db.query<{ allowed: boolean }>(`
+    SELECT NOT EXISTS (
+      SELECT 1 FROM customer_otp_challenges
+      WHERE phone = $1 AND resend_available_at > $2
+    ) AS allowed
+  `, [phone, new Date(now)]);
+  return result.rows[0]?.allowed === true;
 }
 
 /** Атомарно резервирует отправку, чтобы параллельные запросы не списали деньги дважды. */
-export function reserveCode(phone: string, code: string, now = Date.now()): boolean {
-  if (!canSend(phone, now)) return false;
-  store.set(phone, {
-    code,
-    expires: now + TTL_MS,
-    attempts: 0,
-    state: "pending",
-  });
-  cooldowns.set(phone, { code, until: now + RESEND_MS });
-  return true;
+export async function reserveCode(phone: string, code: string, now = Date.now()): Promise<boolean> {
+  const db = await ordersDatabasePool();
+  const instant = new Date(now);
+  const result = await db.query(`
+    INSERT INTO customer_otp_challenges (
+      phone, code_digest, state, expires_at, resend_available_at, attempts
+    ) VALUES ($1, $2, 'pending', $3, $4, 0)
+    ON CONFLICT (phone) DO UPDATE SET
+      code_digest = EXCLUDED.code_digest,
+      state = 'pending',
+      expires_at = EXCLUDED.expires_at,
+      resend_available_at = EXCLUDED.resend_available_at,
+      attempts = 0,
+      created_at = clock_timestamp(),
+      updated_at = clock_timestamp()
+    WHERE customer_otp_challenges.resend_available_at <= $5
+       OR customer_otp_challenges.expires_at <= $5
+    RETURNING phone
+  `, [
+    phone,
+    digestCode(phone, code),
+    new Date(now + TTL_MS),
+    new Date(now + RESEND_MS),
+    instant,
+  ]);
+  return result.rowCount === 1;
 }
 
 /** Код становится пригодным для входа только после успешного ответа SMS-шлюза. */
-export function activateCode(phone: string, code: string): boolean {
-  const entry = store.get(phone);
-  if (!entry || entry.code !== code || entry.state !== "pending") return false;
-  entry.state = "active";
-  return true;
+export async function activateCode(phone: string, code: string): Promise<boolean> {
+  const db = await ordersDatabasePool();
+  const result = await db.query(`
+    UPDATE customer_otp_challenges
+    SET state = 'active', updated_at = clock_timestamp()
+    WHERE phone = $1 AND code_digest = $2 AND state = 'pending'
+    RETURNING phone
+  `, [phone, digestCode(phone, code)]);
+  return result.rowCount === 1;
 }
 
 /** Освобождает резерв при ошибке шлюза, чтобы пользователь мог повторить отправку. */
-export function discardCode(phone: string, code: string) {
-  const entry = store.get(phone);
-  if (entry?.code !== code) return;
-  store.delete(phone);
-  if (cooldowns.get(phone)?.code === code) cooldowns.delete(phone);
+export async function discardCode(phone: string, code: string): Promise<void> {
+  const db = await ordersDatabasePool();
+  await db.query(
+    "DELETE FROM customer_otp_challenges WHERE phone = $1 AND code_digest = $2",
+    [phone, digestCode(phone, code)],
+  );
 }
 
 /** Validate an OTP without consuming it. Customer login consumes only after
  * Medusa has completed, so an upstream timeout does not burn a valid SMS. */
-export function validateCode(
+export async function validateCode(
   phone: string,
   code: string,
   now = Date.now(),
-): { ok: boolean; reason?: string } {
-  const e = store.get(phone);
-  if (!e) return { ok: false, reason: "no_code" };
-  if (e.state !== "active") return { ok: false, reason: "not_sent" };
-  if (now > e.expires) { store.delete(phone); return { ok: false, reason: "expired" }; }
-  if (++e.attempts > MAX_ATTEMPTS) {
-    // Delete only the verification secret. The independently stored resend
-    // cooldown remains authoritative until its original deadline.
-    store.delete(phone);
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = await ordersDatabasePool();
+  const result = await db.query<{
+    code_digest: string;
+    expires_at: Date | string;
+    attempts: number;
+  }>(`
+    UPDATE customer_otp_challenges
+    SET attempts = attempts + 1, updated_at = clock_timestamp()
+    WHERE phone = $1 AND state = 'active'
+    RETURNING code_digest, expires_at, attempts
+  `, [phone]);
+  const row = result.rows[0];
+  if (!row) return { ok: false, reason: "no_code" };
+  const expected = String(row.code_digest || "");
+  if (new Date(row.expires_at).valueOf() < now) {
+    await db.query(
+      "DELETE FROM customer_otp_challenges WHERE phone = $1 AND code_digest = $2",
+      [phone, expected],
+    );
+    return { ok: false, reason: "expired" };
+  }
+  if (Number(row.attempts) > MAX_ATTEMPTS) {
+    await db.query(
+      "DELETE FROM customer_otp_challenges WHERE phone = $1 AND code_digest = $2",
+      [phone, expected],
+    );
     return { ok: false, reason: "too_many" };
   }
-  if (e.code !== code.trim()) return { ok: false, reason: "mismatch" };
+  if (!equalDigest(expected, digestCode(phone, code.trim()))) return { ok: false, reason: "mismatch" };
   return { ok: true };
 }
 
-export function consumeCode(phone: string, code: string, now = Date.now()): boolean {
-  const e = store.get(phone);
-  if (!e || e.state !== "active" || e.code !== code.trim() || now > e.expires) return false;
-  store.delete(phone);
-  return true;
+export async function consumeCode(phone: string, code: string, now = Date.now()): Promise<boolean> {
+  const db = await ordersDatabasePool();
+  const result = await db.query(`
+    DELETE FROM customer_otp_challenges
+    WHERE phone = $1 AND code_digest = $2 AND state = 'active' AND expires_at >= $3
+    RETURNING phone
+  `, [phone, digestCode(phone, code.trim()), new Date(now)]);
+  return result.rowCount === 1;
 }
 
-export function checkCode(
+export async function checkCode(
   phone: string,
   code: string,
   now = Date.now(),
-): { ok: boolean; reason?: string } {
-  const checked = validateCode(phone, code, now);
-  if (checked.ok) consumeCode(phone, code, now);
+): Promise<{ ok: boolean; reason?: string }> {
+  const checked = await validateCode(phone, code, now);
+  if (checked.ok) await consumeCode(phone, code, now);
   return checked;
 }
 
-/** Отправка SMS через P1SMS. channel "digit" = цифровой отправитель (для кодов, без согласования имени). */
-export async function sendSms(phone: string, text: string): Promise<{ ok: boolean; error?: string }> {
+type SmsResult = { ok: boolean; error?: string };
+
+export function smscResponseResult(
+  httpOk: boolean,
+  status: number,
+  data: Record<string, unknown>,
+): SmsResult {
+  if (!httpOk || data.error || data.error_code) {
+    return {
+      ok: false,
+      error: data.error_code ? `smsc_${String(data.error_code).slice(0, 24)}` : `http_${status}`,
+    };
+  }
+  if (data.id === undefined && data.cnt === undefined) {
+    return { ok: false, error: "smsc_invalid_response" };
+  }
+  return { ok: true };
+}
+
+async function sendViaSmsc(phone: string, text: string): Promise<SmsResult> {
+  const login = process.env.SMSC_LOGIN?.trim();
+  const password = process.env.SMSC_PASSWORD;
+  const apiKey = process.env.SMSC_API_KEY;
+  if ((!login || !password) && !apiKey) return { ok: false, error: "smsc_credentials_missing" };
+
+  const form = new URLSearchParams({
+    phones: phone,
+    mes: text,
+    fmt: "3",
+    charset: "utf-8",
+  });
+  if (apiKey) form.set("apikey", apiKey);
+  else {
+    form.set("login", login!);
+    form.set("psw", password!);
+  }
+  const sender = process.env.SMSC_SENDER?.trim();
+  if (sender) form.set("sender", sender);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const res = await fetch("https://smsc.kz/sys/send.php", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: form.toString(),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    return smscResponseResult(res.ok, res.status, data as Record<string, unknown>);
+  } catch {
+    return { ok: false, error: "smsc_unavailable" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Legacy P1SMS adapter retained for rollback while SMSC.kz is the active provider. */
+async function sendViaP1Sms(phone: string, text: string): Promise<SmsResult> {
   const apiKey = process.env.P1SMS_API_KEY;
   if (!apiKey) return { ok: false, error: "no_api_key" };
   const channel = process.env.P1SMS_CHANNEL || "digit";
@@ -147,12 +234,19 @@ export async function sendSms(phone: string, text: string): Promise<{ ok: boolea
       msgStatus === "not_sent" ||
       (Array.isArray(msgErrors) && msgErrors.length > 0);
     if (failed) {
-      return { ok: false, error: String(msgErrors ?? (data as { message?: string })?.message ?? `http_${res.status}`) };
+      return { ok: false, error: `p1sms_${res.status}` };
     }
     return { ok: true };
-  } catch (e) {
-    return { ok: false, error: String(e) };
+  } catch {
+    return { ok: false, error: "p1sms_unavailable" };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function sendSms(phone: string, text: string): Promise<SmsResult> {
+  const provider = String(process.env.SMS_PROVIDER || (process.env.SMSC_PASSWORD || process.env.SMSC_API_KEY ? "smsc" : "p1sms"))
+    .trim()
+    .toLowerCase();
+  return provider === "smsc" ? sendViaSmsc(phone, text) : sendViaP1Sms(phone, text);
 }

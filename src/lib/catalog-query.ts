@@ -146,9 +146,9 @@ function hasKnownPrice(product: Product): boolean {
   return !product.priceTBD && Number.isFinite(product.price) && product.price > 0;
 }
 
-/** Public catalogue cards must represent something the customer can buy. */
+/** Every normalized provider product remains visible; stock and price control purchasing, not discovery. */
 export function isVisibleCatalogProduct(product: Product): boolean {
-  return hasKnownPrice(product) && product.inStock && Boolean(product.variantId);
+  return Boolean(product.variantId);
 }
 
 function compareId(left: Product, right: Product): number {

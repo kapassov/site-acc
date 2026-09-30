@@ -18,8 +18,8 @@ test("Medusa checkout reserves a durable attempt before the idempotent order POS
   const order = route.indexOf('await medusaCommerce<{ order: StandardNOrder }>');
 
   assert.ok(begin >= 0 && boundary > begin && order > boundary);
-  assert.match(route, /profile = await getDaribarUser\(access\)/);
-  assert.match(route, /daribarCustomerActorKey\(profile\.phone, secret\)/);
+  assert.match(route, /session = await customerSession\(req\)/);
+  assert.match(route, /createHmac\("sha256", secret\)\.update\(`customer:\$\{session\.customerId\}`\)/);
   assert.match(route, /attempt\.outcome === "replay" \|\| attempt\.outcome === "uncertain"/);
   assert.match(route, /attempt\.outcome === "pending"/);
   assert.match(route, /idempotencyKey: durableAttemptId/);
@@ -48,7 +48,7 @@ test("Medusa order identity and recipient phone come only from the verified SMS 
   const route = await readFile(ROUTE, "utf8");
 
   assert.match(route, /phone: profile\.phone/);
-  assert.match(route, /customerId = daribarCustomerIdFromActorKey\(actorKey\)/);
+  assert.match(route, /customerId = session\.customerId/);
   assert.match(route, /error: "cart_instance_required"/);
   assert.doesNotMatch(route, /legacy:\$\{cartHash\}/);
   assert.match(route, /customer: \{ externalId: actorKey, phone: profile\.phone/);

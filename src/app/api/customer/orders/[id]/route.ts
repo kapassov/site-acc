@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { setDaribarAuthCookies } from "@/lib/daribar/auth";
-import { DaribarCustomerSessionError, daribarCustomerSession } from "@/lib/daribar/customer-session";
+import { customerSession } from "@/lib/customerSession";
+import { daribarServiceToken } from "@/lib/daribar/config";
 import { getDaribarCustomerOrderPayment, type DaribarOrderPaymentSnapshot } from "@/lib/daribar/order-payments";
 import { getDaribarCustomerOrder, type DaribarOrderSnapshot } from "@/lib/daribar/order-status";
 import { daribarProductSlug, daribarSkuFromProductId } from "@/lib/daribar/ids";
@@ -145,18 +145,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  let session;
-  try {
-    session = await daribarCustomerSession(request);
-  } catch (error) {
-    const authError = error instanceof DaribarCustomerSessionError ? error : null;
-    const response = NextResponse.json({ error: authError?.message || "orders_unavailable" }, {
-      status: authError?.status || 502, headers: PRIVATE_HEADERS,
-    });
-    if (authError?.rotatedTokens) setDaribarAuthCookies(response, authError.rotatedTokens);
-    return response;
-  }
-  if (!session) return NextResponse.json({ error: "daribar_auth_required" }, { status: 401, headers: PRIVATE_HEADERS });
+  const session = await customerSession(request);
+  if (session.status === "anonymous") return NextResponse.json({ error: "auth_required" }, { status: 401, headers: PRIVATE_HEADERS });
+  if (session.status === "unavailable") return NextResponse.json({ error: "orders_unavailable" }, { status: 503, headers: PRIVATE_HEADERS });
 
   const { id } = await params;
   const order = await getCustomerOrder(session.customerId, decodeURIComponent(id));
@@ -166,9 +157,11 @@ export async function GET(
   let payment: DaribarOrderPaymentSnapshot | null | undefined;
   let paymentAvailable = false;
   if (order.sourceSystem === "daribar") {
+    const accessToken = daribarServiceToken();
+    if (!accessToken) return NextResponse.json({ error: "orders_unavailable" }, { status: 503, headers: PRIVATE_HEADERS });
     const [orderResult, paymentResult] = await Promise.allSettled([
-      getDaribarCustomerOrder(session.accessToken, order.sourceOrderId),
-      getDaribarCustomerOrderPayment(session.accessToken, order.sourceOrderId),
+      getDaribarCustomerOrder(accessToken, order.sourceOrderId),
+      getDaribarCustomerOrderPayment(accessToken, order.sourceOrderId),
     ]);
     if (orderResult.status === "fulfilled") {
       snapshot = orderResult.value;
@@ -191,10 +184,8 @@ export async function GET(
       await updateStoredOrderMetadata(order.id, providerMetadataPatch(snapshot, payment));
     }
   }
-  const response = NextResponse.json(
+  return NextResponse.json(
     { order: await orderDetail(order, snapshot, payment, paymentAvailable) },
     { headers: PRIVATE_HEADERS },
   );
-  if (session.rotatedTokens) setDaribarAuthCookies(response, session.rotatedTokens);
-  return response;
 }

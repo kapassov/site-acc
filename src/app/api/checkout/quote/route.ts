@@ -5,17 +5,14 @@ import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/checkoutItems";
 import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 import { checkoutHasPrescription, prescriptionCheckoutAllowed } from "@/lib/checkout/prescription-policy";
-import { isDaribarPublicDeliveryEnabled } from "@/lib/daribar/config";
-import { daribarCustomerSession, DaribarCustomerSessionError } from "@/lib/daribar/customer-session";
-import { setDaribarAuthCookies, type DaribarAuthTokens } from "@/lib/daribar/auth";
+import { customerSession } from "@/lib/customerSession";
+import { daribarServiceToken, isDaribarPublicDeliveryEnabled } from "@/lib/daribar/config";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "cache-control": "no-store" };
-function reply(payload: Record<string, unknown>, status: number, rotatedTokens?: DaribarAuthTokens | null) {
-  const response = NextResponse.json(payload, { status, headers: NO_STORE });
-  if (rotatedTokens) setDaribarAuthCookies(response, rotatedTokens);
-  return response;
+function reply(payload: Record<string, unknown>, status: number) {
+  return NextResponse.json(payload, { status, headers: NO_STORE });
 }
 
 export async function POST(request: Request) {
@@ -38,16 +35,16 @@ export async function POST(request: Request) {
   const fulfillment = body.fulfillment === "pickup" ? "pickup" : "pharmacy";
   const paymentMethod = body.paymentMethod === "cash" ? "cash" : "card";
   let deliveryAccessToken: string | undefined;
-  let rotatedTokens: DaribarAuthTokens | null = null;
   try {
     if (!prescriptionCheckoutAllowed(await checkoutHasPrescription(items), fulfillment, paymentMethod)) {
       return NextResponse.json({ error: "prescription_pickup_cash_only" }, { status: 409, headers: NO_STORE });
     }
     if (fulfillment === "pharmacy" && isDaribarPublicDeliveryEnabled()) {
-      const session = await daribarCustomerSession(request);
-      if (!session) return reply({ error: "delivery_auth_required" }, 401);
-      deliveryAccessToken = session.accessToken;
-      rotatedTokens = session.rotatedTokens;
+      const session = await customerSession(request);
+      if (session.status === "anonymous") return reply({ error: "delivery_auth_required" }, 401);
+      if (session.status === "unavailable") return reply({ error: "delivery_service_unavailable" }, 503);
+      deliveryAccessToken = daribarServiceToken();
+      if (!deliveryAccessToken) return reply({ error: "delivery_service_unavailable" }, 503);
     }
     const quote = await createCheckoutQuote({
       items: items as QuoteItem[],
@@ -61,15 +58,11 @@ export async function POST(request: Request) {
         : null,
       deliveryAccessToken,
     });
-    return reply({ quote }, 200, rotatedTokens);
+    return reply({ quote }, 200);
   } catch (error) {
-    if (error instanceof DaribarCustomerSessionError) {
-      return reply({ error: error.status === 401 ? "delivery_auth_required" : "delivery_service_unavailable" },
-        error.status, error.rotatedTokens);
-    }
     if (error instanceof CheckoutQuoteError) {
-      return reply({ error: error.code }, error.status, rotatedTokens);
+      return reply({ error: error.code }, error.status);
     }
-    return reply({ error: "quote_unavailable" }, 503, rotatedTokens);
+    return reply({ error: "quote_unavailable" }, 503);
   }
 }

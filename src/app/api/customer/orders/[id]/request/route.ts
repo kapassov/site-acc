@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { setDaribarAuthCookies } from "@/lib/daribar/auth";
-import { DaribarCustomerSessionError, daribarCustomerSession } from "@/lib/daribar/customer-session";
+import { customerSession } from "@/lib/customerSession";
+import { daribarServiceToken } from "@/lib/daribar/config";
 import { getDaribarCustomerOrderPayment } from "@/lib/daribar/order-payments";
 import { getDaribarCustomerOrder } from "@/lib/daribar/order-status";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
@@ -33,15 +33,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!rateLimit(`order-request:${clientIp(request)}:${id}`, 5, 60_000, Date.now())) {
     return NextResponse.json({ error: "too_many_requests" }, { status: 429, headers: HEADERS });
   }
-  let session;
-  try { session = await daribarCustomerSession(request); }
-  catch (error) {
-    const known = error instanceof DaribarCustomerSessionError ? error : null;
-    const response = NextResponse.json({ error: known?.message || "auth_unavailable" }, { status: known?.status || 502, headers: HEADERS });
-    if (known?.rotatedTokens) setDaribarAuthCookies(response, known.rotatedTokens);
-    return response;
-  }
-  if (!session) return NextResponse.json({ error: "daribar_auth_required" }, { status: 401, headers: HEADERS });
+  const session = await customerSession(request);
+  if (session.status === "anonymous") return NextResponse.json({ error: "auth_required" }, { status: 401, headers: HEADERS });
+  if (session.status === "unavailable") return NextResponse.json({ error: "auth_unavailable" }, { status: 503, headers: HEADERS });
   try {
     const order = await getCustomerOrder(session.customerId, decodeURIComponent(id));
     if (!order || order.demo || order.sourceSystem !== "daribar") {
@@ -51,10 +45,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (existing) return NextResponse.json({ request: existing }, { headers: HEADERS });
     // A customer request is not a Daribar cancellation/refund. Check the live
     // provider state before accepting one, and keep the order status unchanged.
+    const accessToken = daribarServiceToken();
+    if (!accessToken) return NextResponse.json({ error: "order_request_unavailable" }, { status: 503, headers: HEADERS });
     const [snapshot, payment] = await Promise.all([
-      getDaribarCustomerOrder(session.accessToken, order.sourceOrderId),
+      getDaribarCustomerOrder(accessToken, order.sourceOrderId),
       kind === "return"
-        ? getDaribarCustomerOrderPayment(session.accessToken, order.sourceOrderId).catch(() => null)
+        ? getDaribarCustomerOrderPayment(accessToken, order.sourceOrderId).catch(() => null)
         : Promise.resolve(null),
     ]);
     const actions = availableServiceActions(order, snapshot, payment);
@@ -64,9 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const value = { kind, status: "pending" as const, requestedAt: new Date().toISOString() };
     await updateStoredOrderMetadata(order.id, { [serviceRequestKey(kind)]: value });
     console.info("[customer/order-request] awaiting operator", { orderId: order.id, providerOrderId: order.sourceOrderId, kind });
-    const response = NextResponse.json({ request: value }, { status: 202, headers: HEADERS });
-    if (session.rotatedTokens) setDaribarAuthCookies(response, session.rotatedTokens);
-    return response;
+    return NextResponse.json({ request: value }, { status: 202, headers: HEADERS });
   } catch (error) {
     console.error("[customer/order-request] unavailable", { code: error instanceof Error ? error.message.slice(0, 100) : "unknown" });
     return NextResponse.json({ error: "order_request_unavailable" }, { status: 503, headers: HEADERS });

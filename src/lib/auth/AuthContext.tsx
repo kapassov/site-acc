@@ -45,7 +45,7 @@ interface AuthContextValue {
   isModalOpen: boolean;
   openLogin: () => void;
   closeLogin: () => void;
-  /** Вход или регистрация после подтверждения номера одноразовым кодом Daribar. */
+  /** Вход или регистрация после подтверждения номера нашим SMS-кодом. */
   continueWithPhone: (contact: string, code: string, options?: { signal?: AbortSignal }) => Promise<PhoneAuthResult>;
   logout: () => void;
   updateProfile: (patch: Partial<Pick<User, "name" | "email">>, options?: { signal?: AbortSignal }) => Promise<AuthClientError | null>;
@@ -157,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [addresses, hydrated]);
 
-  // Код проверяется сервером через Daribar; access/refresh остаются только в httpOnly-cookie.
+  // Код проверяет наш backend; клиентская сессия остаётся только в httpOnly-cookie.
   const continueWithPhone = useCallback(
     async (contact: string, code: string, options: { signal?: AbortSignal } = {}): Promise<PhoneAuthResult> => {
       const digits = normalizeOtpPhone(contact);

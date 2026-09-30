@@ -100,9 +100,10 @@ test('cart accepts only valid native Medusa identities and bounded quantities',(
   for(const qty of [0,100,NaN,1.2])assert.equal(validMedusaCartItem({product:{id:'prod_A1',variantId:'variant_V1',source:'medusa'},qty}),false);
   assert.equal(boundedCartQuantity(100),99);
 });
-test('checkout retains real Daribar SMS identity and keeps an atomic Medusa rollback path',async()=>{
+test('checkout retains first-party SMS identity and keeps an atomic Medusa rollback path',async()=>{
   const route=await readFile(new URL('../src/app/api/checkout/route.ts',import.meta.url),'utf8');
-  assert.match(route,/getDaribarUser\(access\)/);assert.match(route,/phone: profile.phone/);
+  assert.match(route,/customerSession\(req\)/);assert.match(route,/phone: profile.phone/);
+  assert.match(route,/customerId = session.customerId/);
   assert.match(route,/\/store\/standardn\/orders/);assert.match(route,/idempotencyKey: durableAttemptId/);
   assert.match(route,/recordCompletedMedusaOrder/);assert.match(route,/createKassaPayment\(stored\)/);
   assert.match(route,/createDaribarOrderForQuote/);assert.match(route,/recordCompletedDaribarOrder/);

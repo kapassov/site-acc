@@ -1,74 +1,71 @@
 import { NextResponse } from "next/server";
-import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import {
-  DaribarAuthContractError,
-  daribarOtpEnabled,
-  daribarOtpFailure,
-  sendDaribarOtp,
-} from "@/lib/daribar/auth";
-import { clientIp, rateLimit } from "@/lib/rateLimit";
+  activateCode,
+  discardCode,
+  genCode,
+  reserveCode,
+  sendSms,
+} from "@/lib/otp";
+import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
 import { normalizeOtpPhone } from "@/lib/otpContract";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 
-// POST { phone } -> sends an authorization code through Daribar Swagger v2.
+// POST { phone } → шлёт SMS-код через настроенного провайдера. Обходов без реальной отправки нет.
 export const dynamic = "force-dynamic";
 
-const MAX_OTP_BODY_BYTES = 4 * 1024;
 const NO_STORE = { "cache-control": "no-store" };
-
-function json(body: Record<string, unknown>, status = 200, retryAfter?: number) {
-  return NextResponse.json(body, {
-    status,
-    headers: { ...NO_STORE, ...(retryAfter ? { "retry-after": String(retryAfter) } : {}) },
-  });
-}
+const MAX_OTP_BODY_BYTES = 4 * 1024;
 
 export async function POST(req: Request) {
-  if (!daribarOtpEnabled()) {
-    return json({ ok: false, sent: false, error: "provider_unavailable" }, 503);
+  const now = Date.now();
+  if (!rateLimit(`otp:${clientIp(req)}`, 10, 10 * 60_000, now) ||
+      !rateLimit("otp:global", 120, 60_000, now)) {
+    return NextResponse.json({ ok: false, sent: false, error: "too_many_requests", retryAfter: 600 }, {
+      status: 429, headers: { ...NO_STORE, "retry-after": "600" },
+    });
   }
-
   let body: Record<string, unknown>;
   try {
     const parsed = await readBoundedJson<unknown>(req, MAX_OTP_BODY_BYTES);
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return json({ ok: false, sent: false, error: "invalid_json" }, 400);
-    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new RequestBodyError(400, "invalid_json");
     body = parsed as Record<string, unknown>;
   } catch (error) {
-    if (error instanceof RequestBodyError) {
-      return json({ ok: false, sent: false, error: error.code }, error.status);
-    }
-    return json({ ok: false, sent: false, error: "invalid_json" }, 400);
-  }
-
-  const phone = normalizeOtpPhone(body.phone);
-  if (!/^7\d{10}$/.test(phone)) {
-    return json({ ok: false, sent: false, error: "bad_phone" }, 400);
-  }
-
-  const now = Date.now();
-  if (!rateLimit(`otp:${clientIp(req)}`, 10, 10 * 60_000, now)
-      || !rateLimit("otp:global", 120, 60_000, now)) {
-    return json({ ok: false, sent: false, error: "too_many_requests", retryAfter: 600 }, 429, 600);
-  }
-  if (!rateLimit(`otp-phone:${phone}`, 1, 30_000, now)) {
-    return json({ ok: false, sent: false, error: "too_soon", retryAfter: 30 }, 429, 30);
-  }
-
-  try {
-    await sendDaribarOtp(phone);
-    // Do not expose userInfoFilled before authentication: it would allow
-    // callers to enumerate which phone numbers already have Daribar profiles.
-    return json({ ok: true, sent: true });
-  } catch (error) {
-    const failure = daribarOtpFailure(error, "send");
-    console.error("Daribar OTP send failed", {
-      reason: error instanceof DaribarAuthContractError ? error.code : "provider_unavailable",
-      status: failure.status,
+    return NextResponse.json({ ok: false, sent: false, error: error instanceof RequestBodyError ? error.code : "invalid_json" }, {
+      status: error instanceof RequestBodyError ? error.status : 400, headers: NO_STORE,
     });
-    return json({
-      ok: false, sent: false, error: failure.error,
-      ...(failure.retryAfter ? { retryAfter: failure.retryAfter } : {}),
-    }, failure.status, failure.retryAfter);
   }
+  const phone = normalizeOtpPhone(body.phone);
+  if (!phone) {
+    return NextResponse.json({ ok: false, sent: false, error: "bad_phone" }, { status: 400, headers: NO_STORE });
+  }
+  const code = genCode();
+  try {
+    if (!await reserveCode(phone, code)) {
+      return NextResponse.json({ ok: false, sent: false, error: "too_soon", retryAfter: 30 }, {
+        status: 429, headers: { ...NO_STORE, "retry-after": "30" },
+      });
+    }
+  } catch {
+    return NextResponse.json({ ok: false, sent: false, error: "otp_unavailable" }, {
+      status: 503, headers: NO_STORE,
+    });
+  }
+  // Короткий латинский шаблон устойчив к ограничениям неподтвержденных SMS-шаблонов.
+  const text = `AptekaSoSklada: ${code}`;
+  const r = await sendSms(phone, text);
+  if (!r.ok) {
+    await discardCode(phone, code).catch(() => undefined);
+    console.error("OTP provider send failed", { reason: r.error || "unknown" });
+    return NextResponse.json(
+      { ok: false, sent: false, error: "provider_unavailable" },
+      { status: 502, headers: NO_STORE },
+    );
+  }
+  if (!await activateCode(phone, code).catch(() => false)) {
+    return NextResponse.json(
+      { ok: false, sent: true, error: "otp_state_error" },
+      { status: 500, headers: NO_STORE },
+    );
+  }
+  return NextResponse.json({ ok: true, sent: true }, { headers: NO_STORE });
 }

@@ -109,17 +109,18 @@ test("empty payments are valid while malformed or cross-order responses fail clo
   );
 });
 
-test("customer order detail polls the documented payment endpoint with the customer token", async () => {
+test("customer order detail polls the documented payment endpoint with the server token", async () => {
   const client = await readFile(new URL("../src/lib/daribar/order-payments.ts", import.meta.url), "utf8");
   const route = await readFile(new URL("../src/app/api/customer/orders/[id]/route.ts", import.meta.url), "utf8");
   const listRoute = await readFile(new URL("../src/app/api/customer/orders/route.ts", import.meta.url), "utf8");
   assert.match(client, /`\/api\/v1\/orders\/\$\{encodeURIComponent\(normalizedId\)\}\/payments`/);
   assert.match(client, /authorization: `Bearer \$\{credential\}`/);
   assert.match(client, /origin: "order"/);
-  assert.match(route, /getDaribarCustomerOrderPayment\(session\.accessToken, order\.sourceOrderId\)/);
+  assert.match(route, /getDaribarCustomerOrderPayment\(accessToken, order\.sourceOrderId\)/);
   assert.match(route, /providerMetadataPatch\(snapshot, payment\)/);
   assert.doesNotMatch(route, /paymentUrl|payment_url/);
   assert.match(listRoute, /paymentCandidates[\s\S]*?\.slice\(0, 5\)/);
-  assert.match(listRoute, /getDaribarCustomerOrderPayment\([\s\S]*?daribarSession\.accessToken/);
+  assert.match(listRoute, /const accessToken = daribarServiceToken\(\)/);
+  assert.match(listRoute, /getDaribarCustomerOrderPayment\(accessToken, order\.sourceOrderId\)/);
   assert.match(listRoute, /customerOrderSummary\([\s\S]*?paymentFeed\.get\(order\.sourceOrderId\)/);
 });

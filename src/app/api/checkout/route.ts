@@ -9,17 +9,13 @@ import { canonicalizeCheckoutItems, detectCheckoutItemsSource } from "@/lib/chec
 import { storefrontCheckoutSource } from "@/lib/catalog-provider";
 import { recordCompletedDaribarOrder, recordCompletedMedusaOrder, updateStoredOrderMetadata } from "@/lib/orders/store";
 import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
-import {
-  DARIBAR_ACCESS_COOKIE, DARIBAR_REFRESH_COOKIE, getDaribarUser,
-  refreshDaribarAuth, setDaribarAuthCookies, type DaribarAuthTokens,
-} from "@/lib/daribar/auth";
+import { customerSession } from "@/lib/customerSession";
 import { DaribarHttpError } from "@/lib/daribar/client";
 import { DaribarCheckoutError } from "@/lib/daribar/checkout";
 import { createDaribarOrderForQuote } from "@/lib/daribar/quote-order";
 import { deliveryDestinationHash, DaribarDeliveryError } from "@/lib/daribar/delivery";
 import { createDaribarDeliveryClaim, DaribarDeliveryClaimError } from "@/lib/daribar/delivery-claim";
-import { isDaribarDeliveryEnabled, isDaribarEnabled } from "@/lib/daribar/config";
-import { daribarCustomerActorKey, daribarCustomerIdFromActorKey } from "@/lib/daribar/customer-identity";
+import { daribarServiceToken, isDaribarDeliveryEnabled, isDaribarEnabled } from "@/lib/daribar/config";
 import { createKassaPayment, kassaEnabled } from "@/lib/payments/kassa";
 import {
   beginCheckoutAttempt, completeCheckoutAttempt, markCheckoutProviderStarted, releaseCheckoutAttempt,
@@ -88,7 +84,7 @@ export async function POST(req: Request) {
   const payment = typeof body.payment === "string" ? body.payment : "";
   const city = String(body.city || "").trim().slice(0, 100);
   const address1 = String(body.address || "").trim().slice(0, 300);
-  const name = String(body.name || "Покупатель").trim().slice(0, 100) || "Покупатель";
+  const submittedName = String(body.name || "Покупатель").trim().slice(0, 100) || "Покупатель";
   const rawComment = String(body.comment || "").trim().slice(0, 500);
   const deliveryDetails = delivery === "courier" ? normalizeDeliveryDetails(body.deliveryDetails) : null;
   const comment = deliveryDetailsComment(deliveryDetails, rawComment);
@@ -108,11 +104,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "idempotency_key_required" }, { status: 400, headers: NO_STORE });
   }
 
-  let refreshedTokens: DaribarAuthTokens | null = null;
   const respond = (payload: Record<string, unknown>, status: number) => {
-    const response = NextResponse.json(payload, { status, headers: NO_STORE });
-    if (refreshedTokens) setDaribarAuthCookies(response, refreshedTokens);
-    return response;
+    return NextResponse.json(payload, { status, headers: NO_STORE });
   };
   let step = "quote", durableAttemptId = "", providerOrderId = "", providerStarted = false;
   try {
@@ -137,27 +130,24 @@ export async function POST(req: Request) {
     if (payment === "card" && !daribarCommerceEnabled && !kassaEnabled()) return respond({ error: "payment_not_configured" }, 503);
     const jar = await cookies();
     const authorization = req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
-    let access = jar.get(DARIBAR_ACCESS_COOKIE)?.value || authorization;
-    const refresh = jar.get(DARIBAR_REFRESH_COOKIE)?.value || "";
-    step = "daribar_profile";
-    if (!access && refresh) {
-      refreshedTokens = await refreshDaribarAuth(refresh); access = refreshedTokens.accessToken;
+    step = "customer_profile";
+    const session = await customerSession(req);
+    if (session.status === "anonymous") return respond({ error: "auth_required" }, 401);
+    if (session.status === "unavailable") return respond({ error: "auth_unavailable" }, 503);
+    const access = daribarCommerceEnabled ? daribarServiceToken() : "";
+    if (daribarCommerceEnabled && (!access || access.length < 20 || /\s/.test(access))) {
+      return respond({ error: "order_service_unavailable" }, 503);
     }
-    if (!access) return respond({ error: "daribar_auth_required" }, 401);
-    let profile;
-    try { profile = await getDaribarUser(access); }
-    catch (error) {
-      if (!(error instanceof DaribarHttpError) || error.status !== 401 || !refresh) throw error;
-      refreshedTokens = await refreshDaribarAuth(refresh);
-      profile = await getDaribarUser(refreshedTokens.accessToken);
-    }
-    // Only the authenticated provider's phone determines customer ownership.
+    const profile = { phone: session.phone, name: session.name, email: session.email };
+    const name = profile.name && profile.name.toLocaleLowerCase("ru-RU") !== "гость"
+      ? profile.name : submittedName;
     const secret = process.env.CUSTOMER_AUTH_SECRET || "";
-    const actorKey = daribarCustomerActorKey(profile.phone, secret);
-    const customerId = daribarCustomerIdFromActorKey(actorKey);
+    if (secret.length < 32) return respond({ error: "auth_unavailable" }, 503);
+    const actorKey = createHmac("sha256", secret).update(`customer:${session.customerId}`).digest("hex");
+    const customerId = session.customerId;
     const cartInstanceKey = createHmac("sha256", secret)
       .update(`cart:${actorKey}:${suppliedCartInstanceId.toLowerCase()}`).digest("hex");
-    const emailInput = String(body.email || "").trim().toLowerCase().slice(0, 254);
+    const emailInput = String(body.email || profile.email || "").trim().toLowerCase().slice(0, 254);
     const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput) ? emailInput : undefined;
     const shipping = {
       city: verifiedQuote.pharmacy.city, address1: delivery === "pickup" ? verifiedQuote.pharmacy.address || "" : address1,
@@ -413,7 +403,7 @@ export async function POST(req: Request) {
       || error instanceof DaribarDeliveryClaimError;
     const responseStatus = providerError ? error.status : status;
     const code = error instanceof StandardNCommerceError || error instanceof CheckoutQuoteError || providerError ? error.code
-      : error instanceof DaribarHttpError && error.status === 401 ? "daribar_auth_required" : "checkout_failed";
+      : error instanceof DaribarHttpError && error.status === 401 ? "order_service_unavailable" : "checkout_failed";
     // Medusa receives the same durable idempotency key, but never automatically
     // recreate an order if its response or local payment persistence is uncertain.
     // A named backend pre-order guard is definitive even when it uses 503

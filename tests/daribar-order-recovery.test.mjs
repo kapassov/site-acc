@@ -20,20 +20,16 @@ test("Daribar customer identity is stable, secret-bound and contains no phone", 
   assert.notEqual(actorKey, daribarCustomerActorKey(phone, `${secret}-rotated`));
 });
 
-test("customer orders recover Daribar storefront orders with the verified profile", async () => {
+test("customer orders are owned by our customer id and refresh Daribar status with a server token", async () => {
   const route = await readFile(ORDERS_ROUTE, "utf8");
-  const session = route.indexOf("await daribarCustomerSession(req)");
-  const daribarBranch = route.indexOf("if (daribarSession)");
-  const localOrders = route.indexOf("await listCustomerOrders(daribarSession.customerId, 100)", daribarBranch);
-  const feed = route.indexOf("await getDaribarCustomerOrderFeed(daribarSession.accessToken)", localOrders);
-  const fallback = route.indexOf("await getDaribarCustomerOrder(daribarSession.accessToken, order.sourceOrderId)", feed);
-  const medusaBranch = route.indexOf("const medusaToken");
+  const session = route.indexOf("await customerSession(req)");
+  const localOrders = route.indexOf("await listCustomerOrders(session.customerId, 100)", session);
+  const serviceToken = route.indexOf("daribarServiceToken()", localOrders);
+  const feed = route.indexOf("await getDaribarCustomerOrderFeed(accessToken)", serviceToken);
+  const fallback = route.indexOf("await getDaribarCustomerOrder(accessToken, order.sourceOrderId)", feed);
 
-  assert.ok(session >= 0 && daribarBranch > session && localOrders > daribarBranch);
-  assert.ok(feed > localOrders && fallback > feed && medusaBranch > fallback);
+  assert.ok(session >= 0 && localOrders > session && serviceToken > localOrders);
+  assert.ok(feed > serviceToken && fallback > feed);
   assert.match(route, /providerMetadataPatch\(snapshot, payment\)/);
-  assert.match(route, /setDaribarAuthCookies\(response, daribarSession\.rotatedTokens\)/);
-  assert.match(route, /const medusaToken = cookieStore\.get\("ms_cust"\)/);
-  assert.match(route, /token: medusaToken/);
-  assert.doesNotMatch(route, /authorization[^\n]*ms_cust|bearer[^\n]*ms_cust/i);
+  assert.doesNotMatch(route, /daribarCustomerSession|setDaribarAuthCookies|DARIBAR_ACCESS_COOKIE/);
 });

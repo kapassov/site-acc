@@ -113,10 +113,13 @@ export function ProductDetail({
   // stock moments later.  A definitive live `false` still wins; until then we
   // retain the catalogue availability and checkout remains the final gate.
   const currentMaximum = liveAvailability?.city === city ? liveAvailability.maximum : null;
-  const stockPending = product.source === "daribar" && currentMaximum === null;
+  const stockPending = product.source === "daribar" && currentMaximum === null
+    && !(product.stockStale === false && !product.inStock);
   const stockPendingText = { ru: "Наличие уточняется", kz: "Қалдығы нақтылануда", en: "Checking availability" }[lang];
   const available = product.source === "daribar"
-    ? cityReady && !needsSelection && currentMaximum !== null && currentMaximum >= qty
+    ? cityReady && !needsSelection && (currentMaximum !== null
+      ? currentMaximum >= qty
+      : product.stockStale === false && !product.inStock ? false : product.inStock)
     : (currentMaximum !== null ? currentMaximum >= qty : product.priceTBD ? (prices?.count ?? 0) > 0 : product.inStock);
   const canBuy = available && Boolean(product.variantId) && unitPrice != null && unitPrice > 0;
   const cartQty = items.find((item) => item.product.id === product.id)?.qty ?? 0;
@@ -299,8 +302,8 @@ export function ProductDetail({
                   )}
                 >
                   {cartQty > 0 ? <Check className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" /> : <ShoppingCart className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />}
-                  <span className="min-w-0 truncate sm:hidden">{cartQty > 0 ? t("card.added") : stockPending ? stockPendingText : canBuy ? t("pdp.addToCart") : t("card.priceTBD")}</span>
-                  <span className="hidden min-w-0 truncate sm:inline">{cartQty > 0 ? t("card.added") : stockPending ? stockPendingText : canBuy ? `${t("pdp.addToCart")} · ${tenge(unitPrice! * qty)}` : t("card.priceTBD")}</span>
+                  <span className="min-w-0 truncate sm:hidden">{cartQty > 0 ? t("card.added") : stockPending ? stockPendingText : !available ? t("card.out") : canBuy ? t("pdp.addToCart") : t("card.priceTBD")}</span>
+                  <span className="hidden min-w-0 truncate sm:inline">{cartQty > 0 ? t("card.added") : stockPending ? stockPendingText : !available ? t("card.out") : canBuy ? `${t("pdp.addToCart")} · ${tenge(unitPrice! * qty)}` : t("card.priceTBD")}</span>
                 </button>
                 <button onClick={() => toggle(product.id)} aria-label={fav ? t("a11y.removeFavorite") : t("a11y.addFavorite")} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-accent-200 hover:text-accent-500 sm:h-12 sm:w-12 sm:rounded-xl">
                   <Heart className={cn("h-4 w-4 sm:h-5 sm:w-5", fav && "fill-accent-500 text-accent-500")} />

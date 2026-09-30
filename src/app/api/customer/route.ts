@@ -1,211 +1,189 @@
+import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import {
-  DARIBAR_ACCESS_COOKIE,
-  DARIBAR_REFRESH_COOKIE,
-  clearDaribarAuthCookies,
-  daribarOtpEnabled,
-  daribarOtpFailure,
-  deleteDaribarUser,
-  getDaribarUser,
-  logoutDaribar,
-  refreshDaribarAuth,
-  setDaribarAuthCookies,
-  updateDaribarUser,
-  verifyDaribarOtp,
-  type DaribarAuthTokens,
-  type DaribarUserProfile,
-} from "@/lib/daribar/auth";
 import { readBoundedJson, RequestBodyError } from "@/lib/httpBody";
-import { phoneDigits } from "@/lib/phone";
+import { MedusaStoreError, medusaStore } from "@/lib/medusaStore";
+import { consumeCode, validateCode } from "@/lib/otp";
 import { isValidOtpCode, normalizeOtpPhone } from "@/lib/otpContract";
+import { phoneDigits } from "@/lib/phone";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { isStrongRuntimeSecret } from "@/lib/serverSecrets";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "cache-control": "no-store" };
 const AUTH_MODE = "sms" as const;
 const MAX_BODY_BYTES = 8 * 1024;
-const MEDUSA_COOKIE = "ms_cust";
+const CUSTOMER_COOKIE = "ms_cust";
 const LEGACY_DEMO_COOKIE = "inkar_demo_session";
+const LEGACY_DARIBAR_ACCESS_COOKIE = "daribar_access";
+const LEGACY_DARIBAR_REFRESH_COOKIE = "daribar_refresh";
+const EMAIL_DOMAIN = "phone.darihana.kz";
 
-const legacyCookieOptions = {
+type StoreCustomer = {
+  id?: unknown;
+  email?: unknown;
+  first_name?: unknown;
+  last_name?: unknown;
+  phone?: unknown;
+  metadata?: Record<string, unknown> | null;
+};
+
+const cookieOptions = {
   httpOnly: true as const,
   sameSite: "lax" as const,
   path: "/",
+  maxAge: 60 * 60 * 24 * 90,
   secure: process.env.NODE_ENV === "production",
 };
 
 function bearer(req: Request): string | null {
-  const value = req.headers.get("authorization") || "";
-  const match = value.match(/^Bearer\s+(.+)$/i);
+  const match = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || null;
 }
 
-function providerStatus(error: unknown): number {
-  return typeof (error as { status?: unknown })?.status === "number"
-    ? (error as { status: number }).status
-    : 0;
+async function sessionToken(req: Request): Promise<string | null> {
+  return bearer(req) || (await cookies()).get(CUSTOMER_COOKIE)?.value || null;
 }
 
-function providerCode(error: unknown): string {
-  return typeof (error as { code?: unknown })?.code === "string"
-    ? (error as { code: string }).code
-    : "";
+function clearLegacySessions(response: NextResponse): void {
+  response.cookies.set(CUSTOMER_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+  response.cookies.set(LEGACY_DEMO_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+  response.cookies.set(LEGACY_DARIBAR_ACCESS_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+  response.cookies.set(LEGACY_DARIBAR_REFRESH_COOKIE, "", { ...cookieOptions, maxAge: 0 });
 }
 
-function invalidSessionError(error: unknown): boolean {
-  return [400, 401].includes(providerStatus(error))
-    || providerCode(error) === "invalid_auth_response";
+function derivePassword(phone: string): string {
+  const secret = process.env.CUSTOMER_AUTH_SECRET || "";
+  if (!isStrongRuntimeSecret(secret)) throw new Error("customer_auth_secret_missing");
+  return `P!${crypto.createHmac("sha256", secret).update(phone).digest("base64url").slice(0, 26)}`;
+}
+
+function phoneEmail(phone: string): string {
+  return `u${phone}@${EMAIL_DOMAIN}`;
 }
 
 function cleanName(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .split(" ")
-    .slice(0, 2)
-    .join(" ")
-    .slice(0, 100);
+  const name = String(value || "").trim().replace(/\s+/g, " ").slice(0, 100);
+  return name && !/[\d<>]/.test(name) ? name : "";
 }
 
-function mapDaribarCustomer(profile: DaribarUserProfile | null, fallbackPhone = "", fallbackName = "") {
-  const first = cleanName(profile?.name);
-  const last = cleanName(profile?.lastName);
-  const name = cleanName([first, last].filter(Boolean).join(" ")) || cleanName(fallbackName);
+function profileComplete(customer: StoreCustomer | null): boolean {
+  const name = cleanName([customer?.first_name, customer?.last_name].filter(Boolean).join(" "));
+  return name.length >= 2 && name.toLocaleLowerCase("ru-RU") !== "гость";
+}
+
+function mapCustomer(customer: StoreCustomer) {
+  const metadata = customer.metadata || {};
+  const contactEmail = typeof metadata.contact_email === "string" ? metadata.contact_email.trim() : "";
+  const accountEmail = typeof customer.email === "string" ? customer.email.trim() : "";
+  const rawEmail = contactEmail || (accountEmail.endsWith(`@${EMAIL_DOMAIN}`) ? "" : accountEmail);
+  const name = cleanName([customer.first_name, customer.last_name].filter(Boolean).join(" "));
+  const level = ["Bronze", "Silver", "Gold", "Platinum"].includes(String(metadata.level))
+    ? String(metadata.level)
+    : "Bronze";
   return {
     name,
-    phone: phoneDigits(profile?.phone || fallbackPhone),
-    email: null,
-    birthDate: profile?.birthDate || null,
-    gender: profile?.gender || null,
-    addresses: Array.isArray(profile?.addresses) ? profile.addresses : [],
-    defaultAddress: profile?.defaultAddress || null,
+    phone: phoneDigits(typeof customer.phone === "string" ? customer.phone : ""),
+    email: rawEmail || null,
+    bonus: Number(metadata.bonus ?? 0) || 0,
+    level,
+    profileComplete: profileComplete(customer),
   };
 }
 
-function profileComplete(profile: DaribarUserProfile | null, fallbackName = ""): boolean {
-  const name = cleanName(
-    [profile?.name, profile?.lastName].filter(Boolean).join(" ") || fallbackName,
-  );
-  return name.length >= 2;
+async function login(email: string, password: string): Promise<string | null> {
+  try {
+    const result = await medusaStore<{ token?: unknown }>("/auth/customer/emailpass", {
+      method: "POST", body: { email, password },
+    });
+    return typeof result.token === "string" && result.token ? result.token : null;
+  } catch (error) {
+    if (error instanceof MedusaStoreError && [400, 401, 404].includes(error.status)) return null;
+    throw error;
+  }
 }
 
-function clearSession(response: NextResponse): void {
-  // Clear cookies created by the retired Medusa/demo authentication flows.
-  response.cookies.set(MEDUSA_COOKIE, "", { ...legacyCookieOptions, maxAge: 0 });
-  response.cookies.set(LEGACY_DEMO_COOKIE, "", { ...legacyCookieOptions, maxAge: 0 });
-  clearDaribarAuthCookies(response);
-}
-
-type ProfileResult =
-  | { status: "authenticated"; profile: DaribarUserProfile; rotated: DaribarAuthTokens | null }
-  | { status: "anonymous"; clear: boolean }
-  | { status: "unavailable" };
-
-/** Validate the Daribar access cookie and rotate it once when it has expired. */
-async function currentDaribarProfile(req: Request): Promise<ProfileResult> {
-  const cookieStore = await cookies();
-  const headerToken = bearer(req);
-  let access = headerToken || cookieStore.get(DARIBAR_ACCESS_COOKIE)?.value || "";
-  // Never combine a mobile bearer token with an unrelated browser refresh cookie.
-  const refresh = headerToken ? "" : (cookieStore.get(DARIBAR_REFRESH_COOKIE)?.value || "");
-  let rotated: DaribarAuthTokens | null = null;
-
-  if (!access && !refresh) return { status: "anonymous", clear: false };
-  if (!access && refresh) {
+async function getOrCreateCustomer(phone: string): Promise<{ token: string; customer: StoreCustomer }> {
+  const email = phoneEmail(phone);
+  const password = derivePassword(phone);
+  let token = await login(email, password);
+  if (!token) {
     try {
-      rotated = await refreshDaribarAuth(refresh);
-      access = rotated.accessToken;
+      const registered = await medusaStore<{ token?: unknown }>("/auth/customer/emailpass/register", {
+        method: "POST", body: { email, password },
+      });
+      token = typeof registered.token === "string" ? registered.token : null;
     } catch (error) {
-      return invalidSessionError(error)
-        ? { status: "anonymous", clear: true }
-        : { status: "unavailable" };
+      if (!(error instanceof MedusaStoreError) || ![400, 409, 422].includes(error.status)) throw error;
     }
   }
+  if (!token) token = await login(email, password);
+  if (!token) throw new Error("customer_auth_unavailable");
 
-  try {
-    const profile = await getDaribarUser(access);
-    return { status: "authenticated", profile, rotated };
-  } catch (error) {
-    if (providerCode(error) === "invalid_auth_response") {
-      return { status: "anonymous", clear: true };
-    }
-    if (providerStatus(error) !== 401 || !refresh || rotated) {
-      return providerStatus(error) === 401
-        ? { status: "anonymous", clear: true }
-        : { status: "unavailable" };
-    }
+  let current = await medusaStore<{ customer?: StoreCustomer }>("/store/customers/me", { token });
+  if (!current.customer) {
+    await medusaStore("/store/customers", {
+      method: "POST",
+      token,
+      body: { email, first_name: "Гость", phone, metadata: { bonus: 0, level: "Bronze" } },
+    });
+    token = await login(email, password);
+    if (!token) throw new Error("customer_auth_unavailable");
+    current = await medusaStore<{ customer?: StoreCustomer }>("/store/customers/me", { token });
   }
-
-  try {
-    rotated = await refreshDaribarAuth(refresh);
-    const profile = await getDaribarUser(rotated.accessToken);
-    return { status: "authenticated", profile, rotated };
-  } catch (error) {
-    return invalidSessionError(error)
-      ? { status: "anonymous", clear: true }
-      : { status: "unavailable" };
+  if (!current.customer || typeof current.customer.id !== "string") {
+    throw new Error("customer_profile_unavailable");
   }
+  return { token, customer: current.customer };
 }
 
 export async function GET(req: Request) {
-  const result = await currentDaribarProfile(req);
-  if (result.status === "authenticated") {
-    const response = NextResponse.json({
-      user: mapDaribarCustomer(result.profile),
+  const token = await sessionToken(req);
+  if (!token) return NextResponse.json({ user: null, authMode: AUTH_MODE }, { headers: NO_STORE });
+  try {
+    const result = await medusaStore<{ customer?: StoreCustomer }>("/store/customers/me", { token });
+    if (!result.customer) throw new MedusaStoreError(404, { error: "customer_not_found" });
+    return NextResponse.json({
+      user: mapCustomer(result.customer),
       authMode: AUTH_MODE,
-      profileComplete: profileComplete(result.profile),
+      profileComplete: profileComplete(result.customer),
     }, { headers: NO_STORE });
-    if (result.rotated) setDaribarAuthCookies(response, result.rotated);
-    return response;
-  }
-  if (result.status === "unavailable") {
+  } catch (error) {
+    if (error instanceof MedusaStoreError && [401, 404].includes(error.status)) {
+      const response = NextResponse.json({ user: null, authMode: AUTH_MODE }, { headers: NO_STORE });
+      clearLegacySessions(response);
+      return response;
+    }
     return NextResponse.json({ user: null, authMode: AUTH_MODE, transient: true }, {
-      status: 503,
-      headers: NO_STORE,
+      status: 503, headers: NO_STORE,
     });
   }
-  const response = NextResponse.json({ user: null, authMode: AUTH_MODE }, { headers: NO_STORE });
-  if (result.clear) clearSession(response);
-  return response;
 }
 
 export async function POST(req: Request) {
   let body: Record<string, unknown>;
   try {
     const parsed = await readBoundedJson<unknown>(req, MAX_BODY_BYTES);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new RequestBodyError(400, "invalid_json");
-    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new RequestBodyError(400, "invalid_json");
     body = parsed as Record<string, unknown>;
   } catch (error) {
-    if (error instanceof RequestBodyError) {
-      return NextResponse.json({ error: error.code }, { status: error.status, headers: NO_STORE });
-    }
-    return NextResponse.json({ error: "invalid_json" }, { status: 400, headers: NO_STORE });
+    return NextResponse.json({ error: error instanceof RequestBodyError ? error.code : "invalid_json" }, {
+      status: error instanceof RequestBodyError ? error.status : 400, headers: NO_STORE,
+    });
   }
-  const action = String(body?.action || "");
 
+  const action = String(body.action || "");
   if (action === "logout") {
-    const cookieStore = await cookies();
-    const access = bearer(req) || cookieStore.get(DARIBAR_ACCESS_COOKIE)?.value || "";
-    if (access) await logoutDaribar(access).catch(() => undefined);
     const response = NextResponse.json({ ok: true }, { headers: NO_STORE });
-    clearSession(response);
+    clearLegacySessions(response);
     return response;
   }
 
   if (action === "continue") {
-    if (!daribarOtpEnabled()) {
-      return NextResponse.json({ error: "auth_unavailable" }, { status: 503, headers: NO_STORE });
-    }
-    const phone = normalizeOtpPhone(body?.phone);
-    const code = String(body?.code || "").trim();
-    const requestedName = cleanName(body?.name);
-    if (phone.length !== 11) {
-      return NextResponse.json({ error: "bad_phone" }, { status: 400, headers: NO_STORE });
-    }
+    const phone = normalizeOtpPhone(body.phone);
+    const code = String(body.code || "").trim();
+    if (!phone) return NextResponse.json({ error: "bad_phone" }, { status: 400, headers: NO_STORE });
     if (!isValidOtpCode(code)) {
       return NextResponse.json({ error: "bad_code", reason: "invalid" }, { status: 401, headers: NO_STORE });
     }
@@ -214,165 +192,111 @@ export async function POST(req: Request) {
         status: 429, headers: { ...NO_STORE, "retry-after": "600" },
       });
     }
-
-    let tokens: DaribarAuthTokens;
+    let checked: Awaited<ReturnType<typeof validateCode>>;
     try {
-      tokens = await verifyDaribarOtp(phone, code);
-    } catch (error) {
-      const failure = daribarOtpFailure(error, "verify");
-      return NextResponse.json({
-        error: failure.error,
-        ...(failure.error === "bad_code" ? { reason: "invalid" } : {}),
-        ...(failure.retryAfter ? { retryAfter: failure.retryAfter } : {}),
-      }, {
-        status: failure.status,
-        headers: { ...NO_STORE, ...(failure.retryAfter ? { "retry-after": String(failure.retryAfter) } : {}) },
+      checked = await validateCode(phone, code);
+    } catch {
+      return NextResponse.json({ error: "auth_unavailable" }, { status: 503, headers: NO_STORE });
+    }
+    if (!checked.ok) {
+      const reason = checked.reason === "expired" || checked.reason === "no_code" ? "expired" : checked.reason;
+      return NextResponse.json({ error: reason === "expired" ? "expired_code" : "bad_code", reason }, {
+        status: 401, headers: NO_STORE,
       });
     }
-
-    let profile: DaribarUserProfile | null = null;
-    let profileUpdatePending = false;
-    if (requestedName) {
-      try {
-        profile = await updateDaribarUser(tokens.accessToken, { fullName: requestedName });
-      } catch (error) {
-        if (providerStatus(error) === 401) {
-          await logoutDaribar(tokens.accessToken).catch(() => undefined);
-          return NextResponse.json({ error: "auth_unavailable" }, { status: 502, headers: NO_STORE });
-        }
-        profileUpdatePending = true;
+    try {
+      const result = await getOrCreateCustomer(phone);
+      if (!await consumeCode(phone, code)) {
+        return NextResponse.json({ error: "bad_code", reason: "expired" }, { status: 401, headers: NO_STORE });
       }
+      const complete = profileComplete(result.customer);
+      const response = NextResponse.json({
+        user: mapCustomer(result.customer),
+        authMode: AUTH_MODE,
+        profileComplete: complete,
+        userInfoFilled: complete,
+        ...(body.withToken === true ? { token: result.token } : {}),
+      }, { headers: NO_STORE });
+      response.cookies.set(CUSTOMER_COOKIE, result.token, cookieOptions);
+      response.cookies.set(LEGACY_DEMO_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+      response.cookies.set(LEGACY_DARIBAR_ACCESS_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+      response.cookies.set(LEGACY_DARIBAR_REFRESH_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+      return response;
+    } catch (error) {
+      console.error("Customer SMS login failed", {
+        reason: error instanceof MedusaStoreError ? `medusa_${error.status}` : "customer_auth_unavailable",
+      });
+      return NextResponse.json({ error: "auth_unavailable" }, { status: 503, headers: NO_STORE });
     }
-    if (!profile) {
-      try {
-        profile = await getDaribarUser(tokens.accessToken);
-      } catch (error) {
-        if (providerStatus(error) === 401) {
-          await logoutDaribar(tokens.accessToken).catch(() => undefined);
-          return NextResponse.json({ error: "auth_unavailable" }, { status: 502, headers: NO_STORE });
-        }
-        // Token verification succeeded. A transient profile read must not
-        // turn a valid Daribar login into a failed login.
-      }
-    }
-
-    const optimisticName = profileUpdatePending ? "" : requestedName;
-    const user = mapDaribarCustomer(profile, phone, optimisticName);
-    const complete = profileComplete(profile, optimisticName);
-    const response = NextResponse.json({
-      user,
-      authMode: AUTH_MODE,
-      profileComplete: complete,
-      userInfoFilled: complete,
-      ...(profileUpdatePending ? { profileUpdatePending: true } : {}),
-    }, { headers: NO_STORE });
-    setDaribarAuthCookies(response, tokens);
-    response.cookies.set(MEDUSA_COOKIE, "", { ...legacyCookieOptions, maxAge: 0 });
-    response.cookies.set(LEGACY_DEMO_COOKIE, "", { ...legacyCookieOptions, maxAge: 0 });
-    return response;
   }
 
   if (action === "update") {
-    const current = await currentDaribarProfile(req);
-    if (current.status === "anonymous") {
-      const response = NextResponse.json({ user: null, error: "no_session" }, {
-        status: 401,
-        headers: NO_STORE,
-      });
-      if (current.clear) clearSession(response);
-      return response;
+    const token = await sessionToken(req);
+    if (!token) return NextResponse.json({ error: "no_session" }, { status: 401, headers: NO_STORE });
+    const patch: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      const name = cleanName(body.name);
+      if (name.length < 2) return NextResponse.json({ error: "bad_name" }, { status: 400, headers: NO_STORE });
+      const [firstName, ...lastName] = name.split(" ");
+      patch.first_name = firstName;
+      patch.last_name = lastName.join(" ");
     }
-    if (current.status === "unavailable") {
-      return NextResponse.json({ user: null, error: "auth_unavailable" }, {
-        status: 503,
-        headers: NO_STORE,
-      });
+    if (body.email !== undefined) {
+      const email = String(body.email || "").trim().toLowerCase().slice(0, 254);
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return NextResponse.json({ error: "bad_email" }, { status: 400, headers: NO_STORE });
+      }
+      try {
+        const current = await medusaStore<{ customer?: StoreCustomer }>("/store/customers/me", { token });
+        if (!current.customer) throw new MedusaStoreError(404, { error: "customer_not_found" });
+        patch.metadata = {
+          ...(current.customer.metadata || {}),
+          contact_email: email || null,
+        };
+      } catch (error) {
+        const status = error instanceof MedusaStoreError && [401, 404].includes(error.status) ? 401 : 502;
+        return NextResponse.json({ error: status === 401 ? "unauthorized" : "profile_unavailable" }, {
+          status, headers: NO_STORE,
+        });
+      }
     }
-
-    const cookieStore = await cookies();
-    const access = current.rotated?.accessToken
-      || bearer(req)
-      || cookieStore.get(DARIBAR_ACCESS_COOKIE)?.value
-      || "";
-    const requestedFullName = cleanName(body?.name);
-    const birthDate = typeof body?.birthDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.birthDate)
-      ? body.birthDate
-      : undefined;
-    const gender = body?.gender === "unknown" || body?.gender === "male" || body?.gender === "female"
-      ? body.gender
-      : undefined;
-    if (!requestedFullName && !birthDate && !gender) {
-      const response = NextResponse.json({
-        user: mapDaribarCustomer(current.profile),
-        profileComplete: profileComplete(current.profile),
-      }, { headers: NO_STORE });
-      if (current.rotated) setDaribarAuthCookies(response, current.rotated);
-      return response;
-    }
-    const fullName = requestedFullName || cleanName(
-      [current.profile.name, current.profile.lastName].filter(Boolean).join(" "),
-    );
-    if (!fullName) {
-      return NextResponse.json({ user: null, error: "name_required" }, {
-        status: 400,
-        headers: NO_STORE,
-      });
-    }
-
+    if (!Object.keys(patch).length) return NextResponse.json({ error: "bad_action" }, { status: 400, headers: NO_STORE });
     try {
-      const profile = await updateDaribarUser(access, {
-        fullName,
-        ...(birthDate ? { birthDate } : {}),
-        ...(gender ? { gender } : {}),
-      });
-      const response = NextResponse.json({
-        user: mapDaribarCustomer(profile),
-        profileComplete: profileComplete(profile),
+      await medusaStore("/store/customers/me", { method: "POST", token, body: patch });
+      const result = await medusaStore<{ customer?: StoreCustomer }>("/store/customers/me", { token });
+      if (!result.customer) throw new Error("customer_profile_unavailable");
+      return NextResponse.json({
+        user: mapCustomer(result.customer),
+        profileComplete: profileComplete(result.customer),
       }, { headers: NO_STORE });
-      if (current.rotated) setDaribarAuthCookies(response, current.rotated);
-      return response;
     } catch (error) {
-      const status = providerStatus(error);
-      return NextResponse.json({ user: null, error: status === 400 ? "bad_profile" : "profile_unavailable" }, {
-        status: status === 400 ? 400 : status === 401 ? 401 : 502,
-        headers: NO_STORE,
+      const status = error instanceof MedusaStoreError && [401, 404].includes(error.status) ? 401 : 502;
+      return NextResponse.json({ error: status === 401 ? "unauthorized" : "profile_unavailable" }, {
+        status, headers: NO_STORE,
       });
     }
   }
 
   if (action === "delete") {
-    const current = await currentDaribarProfile(req);
-    if (current.status === "anonymous") {
-      const response = NextResponse.json({ ok: false, error: "no_session" }, {
-        status: 401,
-        headers: NO_STORE,
-      });
-      if (current.clear) clearSession(response);
-      return response;
-    }
-    if (current.status === "unavailable") {
-      return NextResponse.json({ ok: false, error: "auth_unavailable" }, {
-        status: 503,
-        headers: NO_STORE,
-      });
-    }
-
-    const cookieStore = await cookies();
-    const access = current.rotated?.accessToken
-      || bearer(req)
-      || cookieStore.get(DARIBAR_ACCESS_COOKIE)?.value
-      || "";
+    const token = await sessionToken(req);
+    if (!token) return NextResponse.json({ error: "no_session" }, { status: 401, headers: NO_STORE });
     try {
-      await deleteDaribarUser(access);
-    } catch (error) {
-      return NextResponse.json({ ok: false, error: "deletion_failed" }, {
-        status: providerStatus(error) === 401 ? 401 : 502,
-        headers: NO_STORE,
+      const current = await medusaStore<{ customer?: StoreCustomer }>("/store/customers/me", { token });
+      if (!current.customer) throw new MedusaStoreError(404, { error: "customer_not_found" });
+      await medusaStore("/store/customers/me", {
+        method: "POST", token,
+        body: { metadata: {
+          ...(current.customer.metadata || {}),
+          account_deletion_status: "requested",
+          account_deletion_requested_at: new Date().toISOString(),
+        } },
       });
+      const response = NextResponse.json({ ok: true, status: "requested" }, { status: 202, headers: NO_STORE });
+      clearLegacySessions(response);
+      return response;
+    } catch {
+      return NextResponse.json({ error: "deletion_request_failed" }, { status: 502, headers: NO_STORE });
     }
-    const response = NextResponse.json({ ok: true, status: "deleted" }, { headers: NO_STORE });
-    clearSession(response);
-    return response;
   }
 
   return NextResponse.json({ error: "bad_action" }, { status: 400, headers: NO_STORE });

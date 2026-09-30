@@ -177,13 +177,14 @@ test("authorization uses the exact v2 Swagger request contract", () => {
   assert.match(authSource, /body: \{ phone: normalizedPhone, validation_code: normalizedCode \}/);
 });
 
-test("Daribar-only OTP route has bounded input and no P1SMS or local-code fallback", () => {
+test("first-party OTP route has bounded input, PostgreSQL state and no Daribar customer call", () => {
   assert.match(sendRoute, /readBoundedJson<unknown>\(req, MAX_OTP_BODY_BYTES\)/);
-  assert.match(sendRoute, /provider_unavailable.*503/s);
-  assert.match(sendRoute, /await sendDaribarOtp\(phone\)/);
-  assert.doesNotMatch(sendRoute, /userInfoFilled:\s*result|profileComplete:\s*result/);
-  assert.doesNotMatch(sendRoute, /genCode|reserveCode|activateCode|discardCode|sendSms|P1SMS|customerAuthMode/);
-  assert.doesNotMatch(sendRoute, /["']@\/lib\/otp(?:\.ts)?["']/);
+  assert.match(sendRoute, /provider_unavailable/);
+  assert.match(sendRoute, /await reserveCode\(phone, code\)/);
+  assert.match(sendRoute, /await sendSms\(phone, text\)/);
+  assert.match(sendRoute, /await activateCode\(phone, code\)/);
+  assert.doesNotMatch(sendRoute, /sendDaribarOtp|verifyDaribarOtp|daribar\/auth/);
+  assert.match(sendRoute, /["']@\/lib\/otp["']/);
   assert.match(verifyRoute, /status: 410/);
   assert.doesNotMatch(verifyRoute, /checkCode|@\/lib\/otp/);
 });

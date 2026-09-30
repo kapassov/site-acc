@@ -96,10 +96,11 @@ test("payment session routes authenticate ownership and reveal URL only through 
   assert.match(continueRoute, /request\.headers\.get\("x-forwarded-proto"\)/);
   assert.match(continueRoute, /const expected = publicRequestOrigin\(request\)/);
   assert.match(continueRoute, /NextResponse\.json\(\{ error: "invalid_payment_request" \}/);
-  assert.match(server, /daribarCustomerActorKey\(profile\.phone\)/);
+  assert.match(server, /customerSession\(request\)/);
+  assert.match(server, /createHmac\("sha256", secret\)\.update\(`customer:\$\{session\.customerId\}`\)/);
   assert.match(server, /readCheckoutAttemptForActor\(sessionId, actorKey\)/);
   assert.match(store, /WHERE id = \$1 AND actor_key = \$2/);
-  assert.match(server, /bearerAccess \? "" : \(cookieStore\.get\(DARIBAR_REFRESH_COOKIE\)/);
+  assert.doesNotMatch(server, /DARIBAR_ACCESS_COOKIE|DARIBAR_REFRESH_COOKIE|daribarCustomerSession/);
   assert.match(recoveryRoute, /authenticateCheckoutActorForRequest\(request\)/);
   assert.match(recoveryRoute, /readCheckoutAttemptByKeyForActor\(idempotencyKey, auth\.actorKey\)/);
   assert.match(recoveryRoute, /resolveOrRenewPaymentSessionForActor\(attempt\.id, auth\.actorKey, attempt\)/);
@@ -113,7 +114,7 @@ test("payment session routes authenticate ownership and reveal URL only through 
   assert.doesNotMatch(paymentPage, /session\.redirect|paymentUrl|kassa\.com/i);
 });
 
-test("rotated Daribar cookies survive indistinguishable not-found and unavailable responses", async () => {
+test("payment session errors do not depend on or rotate Daribar customer cookies", async () => {
   const metadataRoute = await readFile(
     new URL("../src/app/api/payment/session/[id]/route.ts", import.meta.url),
     "utf8",
@@ -127,14 +128,13 @@ test("rotated Daribar cookies survive indistinguishable not-found and unavailabl
     "utf8",
   );
 
-  assert.match(server, /readonly rotatedTokens: DaribarAuthTokens \| null/);
-  assert.match(server, /throw authFailure\(error, rotatedTokens\)/);
-  assert.match(server, /throw authFailure\(refreshError, rotatedTokens\)/);
+  assert.match(server, /readonly rotatedTokens: null/);
+  assert.match(server, /const session = await customerSession\(request\)/);
   assert.match(server, /new PaymentSessionAccessError\(503, "payment_session_unavailable", rotatedTokens\)/);
   assert.match(server, /new PaymentSessionAccessError\(404, "payment_session_not_found", rotatedTokens\)/);
   for (const route of [metadataRoute, continueRoute]) {
-    assert.match(route, /if \(error\.rotatedTokens\) setDaribarAuthCookies\(response, error\.rotatedTokens\)/);
     assert.match(route, /NextResponse\.json\(\{ error: error\.code \}/);
+    assert.doesNotMatch(route, /setDaribarAuthCookies|DARIBAR_ACCESS_COOKIE|DARIBAR_REFRESH_COOKIE/);
     assert.doesNotMatch(route, /sessionId.*error|error.*sessionId/);
   }
 });

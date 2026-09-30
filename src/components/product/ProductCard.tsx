@@ -37,7 +37,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
   const href = "/product/" + product.slug;
   const cartQty = items.find((item) => item.product.id === product.id)?.qty ?? 0;
   const showBrand = Boolean(product.brand) && !["-", "—", ""].includes(product.brand.trim());
-  const confirmedOut = product.source === "medusa" && product.stockStale === false && !product.inStock;
+  const confirmedOut = product.stockStale === false && !product.inStock;
   const historicalPrice = product.source === "medusa" && product.stockStale === true && !product.priceTBD && product.price > 0;
   const priceDate = product.stockSourceDate?.split("-").reverse().join(".");
 
@@ -157,7 +157,7 @@ export function ProductCard({ product, boxed = false }: { product: Product; boxe
         <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium sm:mt-2.5 sm:text-xs">
           {product.prescription ? (
             <span className="text-amber-700">{t("card.rxOnly")}</span>
-          ) : product.source === "daribar" ? (
+          ) : product.source === "daribar" && !confirmedOut ? (
             <span className="text-slate-500">{stockCopy.pending}</span>
           ) : available ? (
             <><span className="h-1.5 w-1.5 rounded-full bg-brand-600" /><span className="text-brand-700">{t("card.inStock")}</span></>
