@@ -12,7 +12,6 @@ type FulfillmentCopy = {
 };
 
 type CartExtraCopy = {
-  locale: string;
   back: string;
   fulfillmentTitle: string;
   migration: { title: string; text: string; dismiss: string };
@@ -27,13 +26,11 @@ type CartExtraCopy = {
   summary: {
     pharmacyHours: string;
     deliveryFeePending: string;
-    earnUpTo: (points: string) => string;
   };
 };
 
 export const cartExtraCopy: Record<Lang, CartExtraCopy> = {
   ru: {
-    locale: "ru-RU",
     back: "Назад",
     fulfillmentTitle: "Способ получения",
     migration: {
@@ -71,11 +68,9 @@ export const cartExtraCopy: Record<Lang, CartExtraCopy> = {
     summary: {
       pharmacyHours: "В рабочее время аптеки",
       deliveryFeePending: "Стоимость доставки добавится после указания адреса.",
-      earnUpTo: (points) => `Начислим до ${points} бонусов`,
     },
   },
   kz: {
-    locale: "kk-KZ",
     back: "Артқа",
     fulfillmentTitle: "Алу тәсілі",
     migration: {
@@ -113,11 +108,9 @@ export const cartExtraCopy: Record<Lang, CartExtraCopy> = {
     summary: {
       pharmacyHours: "Дәріхананың жұмыс уақытында",
       deliveryFeePending: "Жеткізу құны мекенжай көрсетілгеннен кейін қосылады.",
-      earnUpTo: (points) => `${points} бонусқа дейін есептейміз`,
     },
   },
   en: {
-    locale: "en-US",
     back: "Back",
     fulfillmentTitle: "Fulfillment method",
     migration: {
@@ -155,7 +148,6 @@ export const cartExtraCopy: Record<Lang, CartExtraCopy> = {
     summary: {
       pharmacyHours: "During pharmacy opening hours",
       deliveryFeePending: "The delivery fee will be added after you enter an address.",
-      earnUpTo: (points) => `Earn up to ${points} bonus points`,
     },
   },
 };

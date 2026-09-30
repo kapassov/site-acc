@@ -25,6 +25,8 @@ test("cart surfaces derive additional copy from the reactive locale", async () =
 
   assert.doesNotMatch(page, /message: "[^"]+"/);
   assert.match(page, /copy\.alerts\[cartAlert\]/);
+  assert.doesNotMatch(summary, /earnUpTo|Sparkles/);
+  assert.doesNotMatch(copy, /earnUpTo|Начислим до|Earn up to/);
 });
 
 test("cart labels catalogue prices as starting prices and defers fulfilment until after pharmacy selection", async () => {

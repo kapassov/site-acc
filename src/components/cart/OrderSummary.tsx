@@ -3,7 +3,7 @@
 import { tenge } from "@/lib/format";
 import { useLang } from "@/lib/i18n/LanguageContext";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { Clock3, Sparkles } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import { cartExtraCopy, type CartFulfillment } from "@/lib/i18n/cart-extra";
 
 export function OrderSummary({
@@ -65,9 +65,6 @@ export function OrderSummary({
       )}
       {user?.name && user?.phone && (
         <p className="mt-1.5 text-sm font-medium text-brand-700">{t("sum.cashback")}: +{tenge(Math.round(subtotal * 0.05))} {t("sum.points")}</p>
-      )}
-      {!user && subtotal > 0 && (
-        <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-brand-700"><Sparkles className="h-4 w-4" /> {copy.summary.earnUpTo(Math.round(subtotal * 0.05).toLocaleString(copy.locale))}</p>
       )}
       <div className="mt-5">{cta}</div>
     </div>
