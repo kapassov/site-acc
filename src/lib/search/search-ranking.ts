@@ -194,6 +194,8 @@ export function rankProductSearchCandidates<T extends Product>(
     const unrequestedCombination = needles.length < 2 && !parsed.original.includes("+")
       && /[\p{L}]{4,}\s*[+/]\s*[\p{L}]{4,}/u.test(source.normalized);
     const matchedPositions = new Set(evidence.positions.filter((position) => position < source.words.length));
+    const available = product.inStock && !product.priceTBD
+      && Number.isFinite(product.price) && product.price > 0;
     const score = [
       exactOriginal ? 0 : 1,
       evidence.tier,
@@ -201,9 +203,9 @@ export function rankProductSearchCandidates<T extends Product>(
       evidence.changedLetters,
       Number(unrequestedCombination),
       scriptMismatch(source.words, needles, evidence.positions),
+      available ? 0 : 1,
       Math.min(...evidence.positions),
       Math.max(0, source.words.length - matchedPositions.size),
-      product.inStock && !product.priceTBD && Number.isFinite(product.price) && product.price > 0 ? 0 : 1,
     ];
     const firstMatched = evidence.distance <= 2 ? Math.min(...evidence.positions) : 0;
     // This is a grouping key from the source title, not a suggested replacement for the query.

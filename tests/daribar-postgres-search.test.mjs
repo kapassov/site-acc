@@ -35,11 +35,24 @@ test("PostgreSQL search supports an exact last-word prefix", () => {
 });
 
 test("generic plural syringe query ranks ordinary syringes ahead of medicines supplied in syringes", () => {
+  const unavailable = { ...product("UNAVAILABLE", "Шприц туберкулиновый 1 мл"),
+    inStock: false, stockPharmacies: 0 };
   const result = searchDaribarPostgresProducts({ query: "шприцы", products: [
     product("MED", "Фазлодекс 250 мг/5 мл шприцы с безопасными стерильными иглами №2"),
+    unavailable,
     product("DEVICE", "Шприц трехкомпонентный Bioject Budget 5 мл"),
   ] });
-  assert.deepEqual(result.products.map((value) => value.sku), ["DEVICE", "MED"]);
+  assert.deepEqual(result.products.map((value) => value.sku), ["DEVICE", "UNAVAILABLE", "MED"]);
+});
+
+test("available search matches lead unavailable matches", () => {
+  const unavailable = { ...product("UNAVAILABLE", "Нурофен таблетки 200 мг №10"),
+    inStock: false, stockPharmacies: 0 };
+  const result = searchDaribarPostgresProducts({ query: "нурофен", products: [
+    unavailable,
+    product("AVAILABLE", "Нурофен таблетки 200 мг №20"),
+  ] });
+  assert.deepEqual(result.products.map((value) => value.sku), ["AVAILABLE", "UNAVAILABLE"]);
 });
 
 test("PostgreSQL search includes brands found by active ingredient/MNN", () => {

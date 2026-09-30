@@ -163,14 +163,25 @@ function compareKnownPrice(left: Product, right: Product, direction: 1 | -1): nu
   return compareId(left, right);
 }
 
+function availableToOrder(product: Product): boolean {
+  return product.inStock && hasKnownPrice(product) && Boolean(product.variantId);
+}
+
+function compareAvailable(left: Product, right: Product): number {
+  return Number(availableToOrder(right)) - Number(availableToOrder(left));
+}
+
 function compareOrderableOtc(left: Product, right: Product): number {
-  const leftPreferred = left.inStock && left.prescription === false && hasKnownPrice(left) && Boolean(left.variantId);
-  const rightPreferred = right.inStock && right.prescription === false && hasKnownPrice(right) && Boolean(right.variantId);
+  const byAvailability = compareAvailable(left, right);
+  if (byAvailability !== 0) return byAvailability;
+  const leftPreferred = availableToOrder(left) && left.prescription === false;
+  const rightPreferred = availableToOrder(right) && right.prescription === false;
   return Number(rightPreferred) - Number(leftPreferred);
 }
 
 /**
- * Keep products that can be ordered without a prescription ahead of the rest.
+ * Keep every product with a current orderable stock record ahead of unavailable
+ * products. Non-prescription items remain a secondary merchandising signal.
  * Array sorting is stable, so the provider/search ranking is preserved inside
  * each priority group.
  */

@@ -139,6 +139,8 @@ export function searchDaribarPostgresProducts(input: {
         nameHits = nameHits.sort((left, right) => (
           Number(!normalizeProductSearchText(left.name).startsWith("шприц "))
           - Number(!normalizeProductSearchText(right.name).startsWith("шприц "))
+          || Number(right.inStock) - Number(left.inStock)
+          || Number(right.stockPharmacies || 0) - Number(left.stockPharmacies || 0)
         ));
       }
       const ingredientHits = hits.filter((hit) => hit.field === "mnn").map((hit) => hit.product)

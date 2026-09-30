@@ -121,8 +121,8 @@ test("filters are applied before pagination with OR brands and AND dimensions", 
 
 test("orderable non-prescription products lead every catalogue result", () => {
   const products = [
-    product("rx-stock", { name: "Тест", prescription: true, price: 100 }),
     product("otc-out", { name: "Тест", inStock: false, stockPharmacies: 0, price: 50 }),
+    product("rx-stock", { name: "Тест", prescription: true, price: 100 }),
     product("otc-stock-high", { name: "Тест", price: 900 }),
     product("rx-out", { name: "Тест", inStock: false, stockPharmacies: 0, prescription: true, price: 25 }),
     product("otc-stock-low", { name: "Тест", price: 500 }),
@@ -144,6 +144,15 @@ test("orderable non-prescription products lead every catalogue result", () => {
     filterAndSortCatalog(products, priceAscending).slice(0, 2).map((item) => item.id),
     ["otc-stock-low", "otc-stock-high"],
   );
+});
+
+test("available catalogue products lead unavailable products", () => {
+  const products = [
+    product("exact-out", { name: "Нурофен", inStock: false, stockPharmacies: 0, price: 500 }),
+    product("similar-stock", { name: "Нурофен Форте", price: 700 }),
+  ];
+  const catalogue = parseCatalogQuery(new URLSearchParams());
+  assert.deepEqual(filterAndSortCatalog(products, catalogue).map((item) => item.id), ["similar-stock", "exact-out"]);
 });
 
 test("medical name relevance stays ahead of merchandising priority in search", () => {
