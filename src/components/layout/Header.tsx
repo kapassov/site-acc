@@ -22,6 +22,7 @@ import { langs } from "@/lib/i18n/dict";
 import { CitySelector } from "./CitySelector";
 import { useCatalogData } from "@/lib/content/CatalogData";
 import { catalogCategoryName } from "@/lib/i18n/catalog-categories";
+import { CATALOG_DIRECTORY } from "@/lib/catalog-directory";
 
 const sections = [
   { key: "nav.sale", href: "/promotions", icon: Percent },
@@ -471,18 +472,51 @@ export function Header() {
               <section className="mt-5" aria-labelledby="mobile-categories-title">
                 <p id="mobile-categories-title" className="text-sm font-bold text-slate-900">{t("drawer.categories")}</p>
                 <nav className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  {visibleMobileCategories.map((cat) => (
-                    <Link key={cat.slug} href={`/catalog/${cat.slug}`} onClick={closeMobileAfterNavigation} className="group flex min-h-[62px] min-w-0 items-center gap-3 border-b border-slate-100 px-3.5 py-2.5 text-slate-800 transition last:border-b-0 hover:bg-brand-50/60">
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700 transition group-hover:bg-brand-100">
-                        <CategoryIcon name={cat.icon} className="h-5 w-5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-bold leading-tight">{catalogCategoryName(cat.slug, cat.name, lang)}</span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-500">{mobileCategoryDescription(cat.slug, t)}</span>
-                      </span>
-                      <ChevronRight className="h-5 w-5 shrink-0 text-brand-600" />
-                    </Link>
-                  ))}
+                  {visibleMobileCategories.map((cat) => {
+                    const directoryGroup = CATALOG_DIRECTORY.find((group) => group.handle === cat.slug);
+                    const row = (
+                      <>
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700 transition group-hover:bg-brand-100">
+                          <CategoryIcon name={cat.icon} className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-bold leading-tight">{catalogCategoryName(cat.slug, cat.name, lang)}</span>
+                          <span className="mt-0.5 block truncate text-xs text-slate-500">{mobileCategoryDescription(cat.slug, t)}</span>
+                        </span>
+                        <ChevronRight className="h-5 w-5 shrink-0 text-brand-600 transition-transform duration-200 group-open/category:rotate-90" />
+                      </>
+                    );
+
+                    if (!directoryGroup?.children.length) {
+                      return (
+                        <Link key={cat.slug} href={`/catalog/${cat.slug}`} onClick={closeMobileAfterNavigation} className="group flex min-h-[62px] min-w-0 items-center gap-3 border-b border-slate-100 px-3.5 py-2.5 text-slate-800 transition last:border-b-0 hover:bg-brand-50/60">
+                          {row}
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <details key={cat.slug} className="group/category border-b border-slate-100 last:border-b-0">
+                        <summary className="group flex min-h-[62px] min-w-0 cursor-pointer list-none items-center gap-3 px-3.5 py-2.5 text-slate-800 transition hover:bg-brand-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 [&::-webkit-details-marker]:hidden">
+                          {row}
+                        </summary>
+                        <div className="bg-slate-50/70 pb-2 pl-[66px] pr-3">
+                          <Link href={`/catalog/${cat.slug}`} onClick={closeMobileAfterNavigation} className="flex min-h-11 items-center border-b border-slate-200 text-sm font-semibold text-brand-700">
+                            {t("home.directory.groupAll")}
+                          </Link>
+                          <ul className="py-1">
+                            {directoryGroup.children.map((child) => (
+                              <li key={child.id}>
+                                <Link href={`/catalog/${child.handle}`} onClick={closeMobileAfterNavigation} className="flex min-h-11 items-center py-2 text-sm leading-5 text-slate-700 transition hover:text-brand-700">
+                                  {catalogCategoryName(child.handle, child.name, lang)}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </details>
+                    );
+                  })}
                 </nav>
                 <Link href="/catalog" onClick={closeMobileAfterNavigation} className="mt-2 flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-bold text-brand-700 transition hover:bg-brand-50">
                   <LayoutGrid className="h-5 w-5" />

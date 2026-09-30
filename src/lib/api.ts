@@ -13,7 +13,7 @@ import {
   getDaribarPriceInfo,
   getDaribarProductBySlug,
 } from "./daribar/catalog.ts";
-import { daribarCategoryDefinitions } from "./daribar/catalog-data.ts";
+import { daribarNavigationTree } from "./daribar/catalog-navigation.ts";
 
 function query(overrides: Partial<CatalogQuery> = {}): CatalogQuery {
   const limit = Math.min(250, Math.max(1, Math.trunc(overrides.limit ?? 250)));
@@ -29,12 +29,7 @@ async function catalogPage(input: Partial<CatalogQuery> = {}) {
 }
 
 function daribarTree(): CatNode[] {
-  return daribarCategoryDefinitions().map((category) => ({
-    id: category.id,
-    name: category.name,
-    handle: category.slug,
-    children: [],
-  }));
+  return daribarNavigationTree();
 }
 
 export async function getCategories(): Promise<Category[]> { return (await catalogPage({ limit: 1, includeFacets: true })).categories; }

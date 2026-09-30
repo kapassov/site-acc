@@ -61,6 +61,18 @@ test("mobile drawer keeps category navigation lightweight and scrollable", () =>
   assert.match(drawer, /safe-area-inset-bottom/);
 });
 
+test("mobile category rows reveal real Daribar subcategories before navigation", () => {
+  assert.match(header, /import \{ CATALOG_DIRECTORY \} from "@\/lib\/catalog-directory"/);
+  assert.match(categoryRows, /CATALOG_DIRECTORY\.find\(\(group\) => group\.handle === cat\.slug\)/);
+  assert.match(categoryRows, /<details[^>]*group\/category/);
+  assert.match(categoryRows, /<summary/);
+  assert.match(categoryRows, /group-open\/category:rotate-90/);
+  assert.match(categoryRows, /directoryGroup\.children\.map\(\(child\) =>/);
+  assert.match(categoryRows, /href=\{`\/catalog\/\$\{child\.handle\}`\}/);
+  assert.match(categoryRows, /t\("home\.directory\.groupAll"\)/);
+  assert.match(categoryRows, /if \(!directoryGroup\?\.children\.length\)/);
+});
+
 test("mobile drawer has no duplicate fixed or sticky action footer", () => {
   assert.doesNotMatch(drawer, /className="[^"]*\b(?:fixed|sticky)\b[^"]*\bbottom-0\b/);
   assert.match(drawer, /aria-labelledby="mobile-personal-title"/);

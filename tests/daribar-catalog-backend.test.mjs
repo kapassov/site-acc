@@ -154,3 +154,11 @@ test("Daribar snapshots are exposed only through the provider facade and preserv
   assert.match(catalog, /"priced_subset"/);
   assert.doesNotMatch(route, /getCatalogReadPage|getMedusaCatalogSnapshot|getRemoteCatalogPayload|postgresCatalogMeta/);
 });
+
+test("production catalogue defaults to PostgreSQL and fails closed instead of calling the provider", async () => {
+  const catalog = await readFile(new URL("../src/lib/daribar/catalog.ts", import.meta.url), "utf8");
+
+  assert.match(catalog, /DARIBAR_CATALOG_READ_SOURCE \|\| "postgres"/);
+  assert.match(catalog, /if \(databaseFirst\) throw new DaribarCatalogError\("daribar_catalog_database_unavailable"\)/);
+  assert.match(catalog, /if \(daribarCatalogReadSource\(\) === "postgres"\) return exact/);
+});
