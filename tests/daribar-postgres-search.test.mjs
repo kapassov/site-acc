@@ -50,3 +50,16 @@ test("test-purchase wording finds diclofenac ampoules, ten syringes and ten alco
   assert.deepEqual(searchDaribarPostgresProducts({ query: "шприцы 10шт", products }).products.map((value) => value.sku), ["SYR"]);
   assert.deepEqual(searchDaribarPostgresProducts({ query: "спритовые салфетки 10шт", products }).products.map((value) => value.sku), ["WIPE"]);
 });
+
+test("large PostgreSQL snapshots reuse one normalized search index", () => {
+  const large = Array.from({ length: 29_303 }, (_, index) => (
+    index === 19_777 ? product("TARGET", "Аспирин таблетки 500 мг №20", "Ацетилсалициловая кислота")
+      : product(`SKU${index}`, `Тестовый товар ${index} капсулы №20`, "")
+  ));
+  const started = performance.now();
+  assert.deepEqual(searchDaribarPostgresProducts({ query: "оспирин", products: large }).products.map((value) => value.sku), ["TARGET"]);
+  const first = performance.now() - started;
+  const repeated = performance.now();
+  assert.deepEqual(searchDaribarPostgresProducts({ query: "аспирин 500 мг", products: large }).products.map((value) => value.sku), ["TARGET"]);
+  assert.ok(performance.now() - repeated < first, "second search should reuse the normalized index");
+});

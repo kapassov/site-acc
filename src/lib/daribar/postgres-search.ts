@@ -1,24 +1,54 @@
 import type { Product } from "../types.ts";
 import {
   matchesProductSearchConstraints,
+  normalizeProductSearchText,
   parseProductSearchQuery,
   type ParsedProductSearchQuery,
 } from "../search/product-search-model.ts";
-import { matchesSourceSearchName, rankProductSearchCandidates } from "../search/search-ranking.ts";
+import { boundedProductNameDistance, rankProductSearchCandidates } from "../search/search-ranking.ts";
 import type { ProductSearchMetadata } from "../search/search-metadata.ts";
 
 type SearchHit = { product: Product; field: "name" | "mnn" };
+type IndexedProduct = { product: Product; nameWords: string[]; mnnWords: string[] };
 
-const mnnProducts = new WeakMap<Product, { mnn: string; product: Product }>();
+const searchIndexes = new WeakMap<readonly Product[], IndexedProduct[]>();
 
-function mnnProduct(product: Product): Product | null {
-  const mnn = product.mnn?.trim() || "";
-  if (!mnn) return null;
-  const cached = mnnProducts.get(product);
-  if (cached?.mnn === mnn) return cached.product;
-  const value = { ...product, name: mnn };
-  mnnProducts.set(product, { mnn, product: value });
-  return value;
+function words(value: string): string[] {
+  return normalizeProductSearchText(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+function indexedProducts(products: readonly Product[]): IndexedProduct[] {
+  const cached = searchIndexes.get(products);
+  if (cached) return cached;
+  const indexed = products.map((product) => ({
+    product,
+    nameWords: words(product.name),
+    mnnWords: words(product.mnn || ""),
+  }));
+  searchIndexes.set(products, indexed);
+  return indexed;
+}
+
+function allowedTypos(word: string, requested: 0 | 1 | 2): number {
+  if (requested === 0 || /\d/u.test(word) || [...word].length < 5) return 0;
+  return Math.min(requested, [...word].length < 9 ? 1 : 2);
+}
+
+function matchesIndexedWords(
+  sourceWords: readonly string[],
+  needles: readonly string[],
+  typos: 0 | 1 | 2,
+): boolean {
+  return needles.every((needle, index) => {
+    const bound = allowedTypos(needle, typos);
+    const lastPrefix = index === needles.length - 1 && needle.length >= 2 && !/\d/u.test(needle);
+    if (sourceWords.some((word) => word === needle
+      || (lastPrefix && word.startsWith(needle))
+      || (bound > 0 && boundedProductNameDistance(word, needle, bound) <= bound))) return true;
+    return sourceWords.some((word, position) => (
+      position + 1 < sourceWords.length && `${word}${sourceWords[position + 1]}` === needle
+    ));
+  });
 }
 
 function variantMatchType(
@@ -39,15 +69,18 @@ function matchingHits(
   typos: 0 | 1 | 2,
 ): SearchHit[] {
   const hits: SearchHit[] = [];
-  for (const product of products) {
-    if (!matchesProductSearchConstraints(product, parsed)) continue;
-    if (matchesSourceSearchName(product, value, typos, true)) {
-      hits.push({ product, field: "name" });
+  const needles = words(value);
+  if (!needles.length) return hits;
+  for (const indexed of indexedProducts(products)) {
+    if (matchesIndexedWords(indexed.nameWords, needles, typos)) {
+      if (matchesProductSearchConstraints(indexed.product, parsed)) {
+        hits.push({ product: indexed.product, field: "name" });
+      }
       continue;
     }
-    const activeIngredient = mnnProduct(product);
-    if (activeIngredient && matchesSourceSearchName(activeIngredient, value, typos, true)) {
-      hits.push({ product, field: "mnn" });
+    if (indexed.mnnWords.length && matchesIndexedWords(indexed.mnnWords, needles, typos)
+        && matchesProductSearchConstraints(indexed.product, parsed)) {
+      hits.push({ product: indexed.product, field: "mnn" });
     }
   }
   return hits;
