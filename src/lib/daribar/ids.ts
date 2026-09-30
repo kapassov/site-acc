@@ -1,30 +1,15 @@
-// Daribar's product UUID is the only catalogue/commerce identity accepted by
-// the storefront. Standard-N numeric IDs and legacy free-form SKUs must be
-// mapped to this UUID before they can enter the active catalogue.
-const DARIBAR_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SKU = /^[A-Za-z0-9._:-]{1,96}$/;
 const PRODUCT_PREFIX = "prod_Daribar";
 const VARIANT_PREFIX = "variant_Daribar";
 const SLUG_MARKER = "--d-";
 
-export function isDaribarUuid(value: unknown): value is string {
-  return typeof value === "string" && DARIBAR_UUID.test(value);
-}
-
-/** Compatibility name for Daribar API contracts whose field is named sku. */
 export function isDaribarSku(value: unknown): value is string {
-  return isDaribarUuid(value);
-}
-
-export function normalizeDaribarUuid(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
-  return DARIBAR_UUID.test(normalized) ? normalized : null;
+  return typeof value === "string" && SKU.test(value);
 }
 
 function encodeSku(sku: string): string {
-  const normalized = normalizeDaribarUuid(sku);
-  if (!normalized) throw new TypeError("invalid_daribar_sku");
-  return Buffer.from(normalized, "utf8").toString("base64url");
+  if (!isDaribarSku(sku)) throw new TypeError("invalid_daribar_sku");
+  return Buffer.from(sku, "utf8").toString("base64url");
 }
 
 function decodeSku(value: string): string | null {

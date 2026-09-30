@@ -11,7 +11,6 @@ import {
   type DaribarStockQuote,
 } from "./daribar/stock-quote.ts";
 import { kztMinorUnits } from "./money.ts";
-import { isDaribarSku } from "./daribar/ids.ts";
 
 export type QuoteItem = CanonicalCheckoutItem;
 export type QuotePharmacy = StandardNQuote["pharmacy"];
@@ -212,7 +211,7 @@ function validDelivery(value: CheckoutDeliveryQuote | undefined): boolean {
     && /^[0-9a-f]{64}$/.test(value.destinationHash)
     && Number.isFinite(Date.parse(value.quotedAt))
     && Array.isArray(value.orderItems) && value.orderItems.length > 0 && value.orderItems.length <= 30
-    && value.orderItems.every(item => isDaribarSku(item.sku)
+    && value.orderItems.every(item => /^[A-Za-z0-9._-]{1,160}$/.test(item.sku)
       && Number.isSafeInteger(item.countDesired) && item.countDesired > 0 && item.countDesired <= 99
       && Number.isSafeInteger(item.pharmacyCount) && item.pharmacyCount >= item.countDesired);
 }

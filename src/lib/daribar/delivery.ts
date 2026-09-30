@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { kztMinorUnits } from "../money.ts";
 import { DaribarHttpError, daribarJson } from "./client.ts";
 import { isDaribarDeliveryEnabled, isDaribarPublicDeliveryEnabled } from "./config.ts";
-import { isDaribarSku } from "./ids.ts";
 
 export type DaribarDeliveryMode = "city" | "pharmacy";
 export type DaribarDeliveryProvider = "yandex" | "choco" | "wolt";
@@ -102,7 +101,7 @@ function parseOrderItems(value: unknown, pharmacyCode: string, itemsPrice: numbe
     const sourceCode = raw?.source_code == null ? pharmacyCode : text(raw.source_code, 128);
     const countDesired = integer(raw?.quantity_desired, 1, 99), pharmacyCount = integer(raw?.quantity, 0, 10_000_000);
     const unitPrice = money(raw?.price_with_warehouse_discount) ?? money(raw?.base_price);
-    if (!raw || !isDaribarSku(sku) || parsed.has(sku) || sourceCode !== pharmacyCode
+    if (!raw || !/^[A-Za-z0-9._-]{1,160}$/.test(sku) || parsed.has(sku) || sourceCode !== pharmacyCode
         || countDesired === null || pharmacyCount === null || pharmacyCount < countDesired || unitPrice === null) return null;
     const unitMinor = kztMinorUnits(unitPrice);
     if (unitMinor === null || !Number.isSafeInteger(unitMinor * countDesired)) return null;
@@ -141,7 +140,7 @@ function normalizedItems(items: DaribarDeliveryItem[]): Array<{ sku: string; cou
   const seen = new Set<string>();
   return items.map(item => {
     const sku = text(item?.sku, 160);
-    if (!isDaribarSku(sku) || seen.has(sku) || !Number.isSafeInteger(item?.countDesired)
+    if (!/^[A-Za-z0-9._-]{1,160}$/.test(sku) || seen.has(sku) || !Number.isSafeInteger(item?.countDesired)
         || item.countDesired < 1 || item.countDesired > 99) throw new DaribarDeliveryError(409, "delivery_product_mapping_ambiguous");
     seen.add(sku); return { sku, count_desired: item.countDesired };
   });

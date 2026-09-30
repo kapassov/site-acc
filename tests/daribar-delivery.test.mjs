@@ -12,16 +12,14 @@ import {
   DaribarDeliveryClaimError,
   parseDaribarDeliveryClaimResponse,
 } from "../src/lib/daribar/delivery-claim.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 const CHECKOUT_DELIVERY = new URL("../src/lib/checkout-delivery.ts", import.meta.url);
 
-const DARIBAR_UUID = daribarUuid("1234567890");
-const expected = [{ sku: DARIBAR_UUID, countDesired: 2 }];
+const expected = [{ sku: "1234567890", countDesired: 2 }];
 const actualOffer = () => ({
   pharmacy: { code: "apteka_almaty_001", name: "Аптека №1", city: "Алматы", address: "Абая, 1" },
   items_price: 900,
-  items: [{ source_code: "apteka_almaty_001", sku: DARIBAR_UUID, base_price: 500,
+  items: [{ source_code: "apteka_almaty_001", sku: "1234567890", base_price: 500,
     price_with_warehouse_discount: 450, quantity: 5, quantity_desired: 2 }],
   delivery: [
     { provider: "yandex", delivery_type: "ondemand", price: 890, eta: 45, distance: 2.4 },
@@ -41,7 +39,7 @@ test("Daribar price response reconciles SKU, stock, item total and cheapest deli
   const parsed = parseDaribarDeliveryOffer(actualOffer(), expected);
   assert.equal(parsed?.bestDelivery.price, 650);
   assert.equal(parsed?.total, 1550);
-  assert.deepEqual(parsed?.orderItems, [{ sku: DARIBAR_UUID, countDesired: 2, pharmacyCount: 5 }]);
+  assert.deepEqual(parsed?.orderItems, [{ sku: "1234567890", countDesired: 2, pharmacyCount: 5 }]);
   const mismatch = actualOffer(); mismatch.items_price = 901;
   assert.equal(parseDaribarDeliveryOffer(mismatch, expected), null);
 });
@@ -88,7 +86,7 @@ test("public city best uses the documented endpoint and refuses a missing route"
       assert.equal(new URL(String(url)).pathname, "/public/api/v2/delivery/best");
       assert.equal(new Headers(init.headers).get("authorization"), `Bearer ${"a".repeat(20)}`);
       const body = JSON.parse(String(init.body));
-      assert.deepEqual(body.items, [{ sku: DARIBAR_UUID, count_desired: 2 }]);
+      assert.deepEqual(body.items, [{ sku: "1234567890", count_desired: 2 }]);
       return new Response("Not Found", { status: 404 });
     };
     await assert.rejects(bestDeliveryInCity({ city: "Алматы", sourceCode: "apteka_almaty_001",
@@ -148,12 +146,12 @@ test("ondemand is normalized internally and destination is bound by a stable has
 
 test("order carries the exact signed provider, price, ETA and stock", () => {
   const deliveryQuote = { mode: "pharmacy", provider: "yandex", deliveryType: "on_demand",
-    price: 890, itemsPrice: 900, orderItems: [{ sku: DARIBAR_UUID, countDesired: 2, pharmacyCount: 5 }],
+    price: 890, itemsPrice: 900, orderItems: [{ sku: "1234567890", countDesired: 2, pharmacyCount: 5 }],
     eta: 45, distance: 2.4, daribarSourceCode: "apteka_almaty_001", pharmacyId: "sloc_test",
     destinationHash: "0".repeat(64), quotedAt: new Date().toISOString() };
   const payload = buildDaribarOrderPayload({
     offer: { sourceCode: "apteka_almaty_001", pharmacy: { city: "Алматы" },
-      lines: [{ sku: DARIBAR_UUID, quantity: 2, availableQuantity: 5 }] },
+      lines: [{ sku: "1234567890", quantity: 2, availableQuantity: 5 }] },
     phone: "+77001234567", delivery: "courier", payment: "card", city: "Алматы",
     address: "ул. Абая, 123", deliveryQuote,
   });
@@ -170,7 +168,7 @@ test("order carries the exact signed provider, price, ETA and stock", () => {
 
 test("courier claim is linked to the order and carries the full delivery address", () => {
   const quote = { mode: "pharmacy", provider: "yandex", deliveryType: "on_demand",
-    price: 890, itemsPrice: 900, orderItems: [{ sku: DARIBAR_UUID, countDesired: 2, pharmacyCount: 5 }],
+    price: 890, itemsPrice: 900, orderItems: [{ sku: "1234567890", countDesired: 2, pharmacyCount: 5 }],
     eta: 45, distance: 2.4, daribarSourceCode: "apteka_almaty_001", pharmacyId: "sloc_test",
     destinationHash: "0".repeat(64), quotedAt: new Date().toISOString() };
   const payload = buildDaribarDeliveryClaimPayload({
@@ -217,7 +215,7 @@ test("claim call uses customer authentication and a separate optional partner to
       } });
     };
     const quote = { mode: "pharmacy", provider: "yandex", deliveryType: "pedestrian",
-      price: 650, itemsPrice: 900, orderItems: [{ sku: DARIBAR_UUID, countDesired: 2, pharmacyCount: 5 }],
+      price: 650, itemsPrice: 900, orderItems: [{ sku: "1234567890", countDesired: 2, pharmacyCount: 5 }],
       eta: 55, distance: 2.4, daribarSourceCode: "apteka_almaty_001", pharmacyId: "sloc_test",
       destinationHash: "0".repeat(64), quotedAt: new Date().toISOString() };
     const claim = await createDaribarDeliveryClaim({ accessToken: "a".repeat(20), orderId: "order-123",

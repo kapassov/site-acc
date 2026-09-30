@@ -3,10 +3,6 @@ import test from "node:test";
 import { buildDaribarStockQuote } from "../src/lib/daribar/stock-quote-builder.ts";
 import { supportsDaribarPayment } from "../src/lib/daribar/stock-quote.ts";
 import { daribarProductId, daribarVariantId } from "../src/lib/daribar/ids.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
-
-const SKU_1 = daribarUuid("SKU-1");
-const SKU_2 = daribarUuid("SKU-2");
 
 const pharmacy = {
   id: "sloc_01TESTPHARMACY",
@@ -30,7 +26,7 @@ const mappings = [
     productId: "prod_01TESTPRODUCTA",
     variantId: "variant_01TESTVARIANTA",
     quantity: 2,
-    sku: SKU_1,
+    sku: "SKU-1",
     wareId: "11111111-1111-4111-8111-111111111111",
     unitPrice: 1000,
   },
@@ -38,7 +34,7 @@ const mappings = [
     productId: "prod_01TESTPRODUCTB",
     variantId: "variant_01TESTVARIANTB",
     quantity: 1,
-    sku: SKU_2,
+    sku: "SKU-2",
     wareId: "22222222-2222-4222-8222-222222222222",
     unitPrice: 700,
   },
@@ -56,8 +52,8 @@ function row(products) {
 test("Daribar stock quote combines live quantities with Medusa prices for the whole cart", () => {
   const now = Date.UTC(2026, 8, 20, 10, 0, 0);
   const quote = buildDaribarStockQuote(row([
-    { sourceCode: "ass-001", sku: SKU_1, wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
-    { sourceCode: "ass-001", sku: SKU_2, wareId: "unused", name: "B", quantity: 3, quantityDesired: 1, price: 850, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-1", wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", wareId: "unused", name: "B", quantity: 3, quantityDesired: 1, price: 850, analogs: [] },
   ]), pharmacy, mappings, now);
 
   assert.ok(quote);
@@ -75,21 +71,21 @@ test("Daribar stock quote combines live quantities with Medusa prices for the wh
 
 test("Daribar stock quote rejects partial, insufficient or missing Medusa-price baskets", () => {
   assert.equal(buildDaribarStockQuote(row([
-    { sourceCode: "ass-001", sku: SKU_1, wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-1", wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
   ]), pharmacy, mappings), null);
   assert.equal(buildDaribarStockQuote(row([
-    { sourceCode: "ass-001", sku: SKU_1, wareId: "unused", name: "A", quantity: 1, quantityDesired: 2, price: 1200, analogs: [] },
-    { sourceCode: "ass-001", sku: SKU_2, wareId: "unused", name: "B", quantity: 1, quantityDesired: 1, price: 850, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-1", wareId: "unused", name: "A", quantity: 1, quantityDesired: 2, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", wareId: "unused", name: "B", quantity: 1, quantityDesired: 1, price: 850, analogs: [] },
   ]), pharmacy, mappings), null);
   const zeroDaribarPrice = buildDaribarStockQuote(row([
-    { sourceCode: "ass-001", sku: SKU_1, wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 0, analogs: [] },
-    { sourceCode: "ass-001", sku: SKU_2, wareId: "unused", name: "B", quantity: 1, quantityDesired: 1, price: 0, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-1", wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 0, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", wareId: "unused", name: "B", quantity: 1, quantityDesired: 1, price: 0, analogs: [] },
   ]), pharmacy, mappings);
   assert.equal(zeroDaribarPrice?.subtotal, 2700);
   const missingMedusaPrice = mappings.map((mapping, index) => index === 1 ? { ...mapping, unitPrice: 0 } : mapping);
   assert.equal(buildDaribarStockQuote(row([
-    { sourceCode: "ass-001", sku: SKU_1, wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
-    { sourceCode: "ass-001", sku: SKU_2, wareId: "unused", name: "B", quantity: 1, quantityDesired: 1, price: 0, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-1", wareId: "unused", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", wareId: "unused", name: "B", quantity: 1, quantityDesired: 1, price: 0, analogs: [] },
   ]), pharmacy, missingMedusaPrice), null);
 });
 
@@ -101,14 +97,14 @@ test("native Daribar cart is quoted using current Daribar pharmacy prices, not i
     unitPrice: index === 0 ? 900 : 600,
   }));
   const quote = buildDaribarStockQuote(row([
-    { sourceCode: "ass-001", sku: SKU_1, name: "A", quantity: 2, quantityDesired: 2, basePrice: 1300, price: 1200, analogs: [] },
-    { sourceCode: "ass-001", sku: SKU_2, name: "B", quantity: 3, quantityDesired: 1, basePrice: 950, price: 850, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-1", name: "A", quantity: 2, quantityDesired: 2, basePrice: 1300, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", name: "B", quantity: 3, quantityDesired: 1, basePrice: 950, price: 850, analogs: [] },
   ]), pharmacy, native);
   assert.ok(quote);
   assert.equal(quote.total, 3250);
   assert.deepEqual(quote.lines.map((line) => line.unitPrice), [1200, 850]);
   assert.equal(buildDaribarStockQuote(row([
-    { sourceCode: "ass-001", sku: SKU_1, name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
-    { sourceCode: "ass-001", sku: SKU_2, name: "B", quantity: 3, quantityDesired: 1, price: 0, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-1", name: "A", quantity: 2, quantityDesired: 2, price: 1200, analogs: [] },
+    { sourceCode: "ass-001", sku: "SKU-2", name: "B", quantity: 3, quantityDesired: 1, price: 0, analogs: [] },
   ]), pharmacy, native), null);
 });

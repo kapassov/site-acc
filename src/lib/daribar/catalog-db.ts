@@ -1,7 +1,6 @@
 import type { Pool } from "pg";
 import type { Product } from "../types.ts";
 import { ordersDatabasePool } from "../orders/store.ts";
-import { isDaribarSku } from "./ids.ts";
 
 type StateRow = {
   run_id: string;
@@ -9,7 +8,6 @@ type StateRow = {
   city: string;
   source_count: number;
   normalized_count: number;
-  uuid_count: number;
   checksum: string;
 };
 
@@ -39,7 +37,7 @@ function validProduct(value: unknown): value is Product {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const product = value as Partial<Product>;
   return product.source === "daribar"
-    && isDaribarSku(product.sku)
+    && typeof product.sku === "string"
     && typeof product.id === "string"
     && typeof product.variantId === "string"
     && typeof product.slug === "string"
@@ -57,28 +55,24 @@ export async function readDaribarCatalogDatabase(
   const db = database || await ordersDatabasePool();
   const state = await db.query<StateRow>(`
     SELECT run.id AS run_id, run.generated_at, run.city, run.source_count,
-           run.normalized_count, run.checksum,
-           (SELECT count(*)::integer
-            FROM daribar_catalog_products product
-            WHERE product.run_id = run.id AND product.daribar_uuid IS NOT NULL) AS uuid_count
+           run.normalized_count, run.checksum
     FROM daribar_catalog_state state
     JOIN daribar_catalog_runs run ON run.id = state.active_run_id
     WHERE state.singleton AND run.status = 'published'
     LIMIT 1
   `);
   const active = state.rows[0];
-  if (!active || active.normalized_count < 1 || active.normalized_count > active.source_count
-      || active.uuid_count < 1 || active.uuid_count > active.normalized_count) {
+  if (!active || active.normalized_count < 1 || active.normalized_count > active.source_count) {
     throw new DaribarCatalogDatabaseError("daribar_catalog_database_unavailable");
   }
   const result = await db.query<ProductRow>(`
     SELECT product
     FROM daribar_catalog_products
-    WHERE run_id = $1 AND daribar_uuid IS NOT NULL
+    WHERE run_id = $1
     ORDER BY sku
   `, [active.run_id]);
   const products = result.rows.map((row) => row.product).filter(validProduct);
-  if (products.length !== active.uuid_count) {
+  if (products.length !== active.normalized_count) {
     throw new DaribarCatalogDatabaseError("daribar_catalog_database_incomplete");
   }
   const value = {
@@ -97,14 +91,13 @@ export async function readDaribarCatalogProductPrice(
   sku: string,
   database?: Pick<Pool, "query">,
 ): Promise<number | null> {
-  if (!isDaribarSku(sku)) return null;
   const db = database || await ordersDatabasePool();
   const result = await db.query<{ price_amount: string | number | null }>(`
     SELECT product.price_amount
     FROM daribar_catalog_state state
     JOIN daribar_catalog_runs run ON run.id = state.active_run_id AND run.status = 'published'
     JOIN daribar_catalog_products product ON product.run_id = run.id
-    WHERE state.singleton AND product.daribar_uuid = $1::uuid
+    WHERE state.singleton AND product.sku = $1
     LIMIT 1
   `, [sku]);
   const value = Number(result.rows[0]?.price_amount);
@@ -116,15 +109,14 @@ export async function readDaribarCatalogPrescriptionFlags(
   skus: string[],
   database?: Pick<Pool, "query">,
 ): Promise<Map<string, boolean>> {
-  const validSkus = [...new Set(skus.filter(isDaribarSku))];
-  if (!validSkus.length) return new Map();
+  if (!skus.length) return new Map();
   const db = database || await ordersDatabasePool();
   const result = await db.query<{ sku: string; prescription: boolean }>(`
     SELECT product.sku, product.prescription
     FROM daribar_catalog_state state
     JOIN daribar_catalog_runs run ON run.id = state.active_run_id AND run.status = 'published'
     JOIN daribar_catalog_products product ON product.run_id = run.id
-    WHERE state.singleton AND product.daribar_uuid = ANY($1::uuid[])
-  `, [validSkus]);
+    WHERE state.singleton AND product.sku = ANY($1::text[])
+  `, [skus]);
   return new Map(result.rows.map((row) => [row.sku, row.prescription === true]));
 }

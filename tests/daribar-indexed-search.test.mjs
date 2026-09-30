@@ -8,12 +8,11 @@ import {
   searchDaribarSnapshot,
 } from "../src/lib/daribar/indexed-search.ts";
 import { parseProductSearchQuery } from "../src/lib/search/product-search-model.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 const GENERATED_AT = new Date().toISOString();
 function product(sku, name, overrides = {}) {
   const mapped = mapDaribarProduct({
-    sku: daribarUuid(sku), name, manufacturer: "Alpha Pharma", categories_ids: ["9", "145"],
+    sku, name, manufacturer: "Alpha Pharma", categories_ids: ["9", "145"],
     min_customer_price: 1250, quantity: 8, ...overrides,
   });
   assert.ok(mapped);
@@ -37,7 +36,7 @@ test("an exact original name wins without requesting any typo level", async () =
     return indexReply([exact.id]);
   });
   assert.equal(calls.length, 1);
-  assert.deepEqual(result.products.map((item) => item.sku), [daribarUuid("EXACT")]);
+  assert.deepEqual(result.products.map((item) => item.sku), ["EXACT"]);
   assert.equal(result.search.matchType, "exact");
   assert.equal(result.search.matchedQuery, null);
 });
@@ -193,7 +192,7 @@ test("numeric/form-only queries retain their exact filters instead of querying t
     assert.deepEqual(request.forms, ["tablet"]);
     return indexReply([named.id]);
   });
-  assert.deepEqual(result.products.map((item) => item.sku), [daribarUuid("NURO")]);
+  assert.deepEqual(result.products.map((item) => item.sku), ["NURO"]);
 });
 
 test("a transliterated label is kept alongside plausible literal-name typos, without auto-correcting ambiguity", async () => {
@@ -207,7 +206,7 @@ test("a transliterated label is kept alongside plausible literal-name typos, wit
     }
     return indexReply(request.typos === 1 && request.query === "линкс" ? [russian.id] : []);
   });
-  assert.deepEqual(result.products.map((item) => item.sku), ["LINEX", "LINX"].map(daribarUuid));
+  assert.deepEqual(result.products.map((item) => item.sku), ["LINEX", "LINX"]);
   assert.equal(result.search.matchedQuery, null);
 });
 
@@ -215,7 +214,7 @@ test("alias-only candidates are an explicit possibility, never a confident autom
   const latin = product("UNIQUE", "UniqueBrand капсулы №10");
   const result = await searchDaribarSnapshot(source("уникальныйбренд", [latin]), async (request) =>
     indexReply(request.useAliases ? [latin.id] : []));
-  assert.deepEqual(result.products.map((item) => item.sku), [daribarUuid("UNIQUE")]);
+  assert.deepEqual(result.products.map((item) => item.sku), ["UNIQUE"]);
   assert.equal(result.search.matchType, "alias");
   assert.equal(result.search.matchedQuery, null);
 });
@@ -229,7 +228,7 @@ test("hydration independently rejects wrong dose, unit, pack and form despite en
   const candidates = [wrongDose, safe, wrongUnit, wrongPack, wrongForm];
   const result = await searchDaribarSnapshot(source("нурофн 200 мг таблетки №10", candidates), async (request) =>
     indexReply(request.typos > 0 ? candidates.map((item) => item.id) : []));
-  assert.deepEqual(result.products.map((item) => item.sku), [daribarUuid("SAFE")]);
+  assert.deepEqual(result.products.map((item) => item.sku), ["SAFE"]);
   assert.equal(result.search.matchedQuery, null, "never rewrite explicit dosage/form query text");
 });
 
@@ -242,7 +241,7 @@ test("even a name-only query may only hydrate existing Daribar identities", asyn
   }));
   assert.equal(result.products[0], authoritative);
   assert.equal(result.products[0].price, 3210);
-  assert.equal(result.products[0].image, `/api/media/daribar?sku=${daribarUuid("SAFE")}`);
+  assert.equal(result.products[0].image, "/api/media/daribar?sku=SAFE");
 });
 
 test("unknown, retired-source and missing-SKU identities fail rather than inventing cards", async () => {
@@ -308,9 +307,9 @@ test("Daribar native fallback enforces source and exact numeric/form guards too"
   const safe = product("SAFE", "Нурофен 200 мг таблетки №10");
   const wrong = product("WRONG", "Нурофен 400 мг капсулы №20");
   const foreign = { ...safe, source: "medusa" };
-  assert.deepEqual(guardNativeDaribarSearch([wrong, foreign, safe], "Нурофен 200 мг таблетки №10").map((item) => item.sku), [daribarUuid("SAFE")]);
+  assert.deepEqual(guardNativeDaribarSearch([wrong, foreign, safe], "Нурофен 200 мг таблетки №10").map((item) => item.sku), ["SAFE"]);
   assert.deepEqual(guardNativeDaribarSearch([wrong, foreign, safe], "нурофн 200 мг таблетки №10"), [], "unbound typo plus dose must not rescue another medication");
-  assert.deepEqual(guardNativeDaribarSearch([wrong, foreign, safe], "нурофн 200 мг таблетки №10", false, { resolvedProducts: [safe] }).map((item) => item.sku), [daribarUuid("SAFE")]);
+  assert.deepEqual(guardNativeDaribarSearch([wrong, foreign, safe], "нурофн 200 мг таблетки №10", false, { resolvedProducts: [safe] }).map((item) => item.sku), ["SAFE"]);
   assert.deepEqual(guardNativeDaribarSearch([safe], "нурофн", true), []);
 });
 
@@ -345,7 +344,7 @@ test("explicit price sorting remains authoritative after relevance matching", as
     indexReply(request.typos > 0 ? [first.id, second.id] : []));
   const query = parseCatalogQuery(new URLSearchParams({ q: "парацитомол", sort: "price_asc", limit: "1" }));
   const projection = projectDaribarCatalog(result.products, query, true);
-  assert.deepEqual(projection.products.map((item) => item.sku), [daribarUuid("B")]);
+  assert.deepEqual(projection.products.map((item) => item.sku), ["B"]);
   assert.equal(projection.facets.price.min, 500);
 });
 

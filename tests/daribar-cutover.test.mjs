@@ -6,7 +6,6 @@ import { normalizeDaribarSnapshot } from "../scripts/publish-daribar-catalog.mjs
 import { readDaribarCatalogDatabase } from "../src/lib/daribar/catalog-db.ts";
 import { validCartItemForProvider } from "../src/lib/cart/medusa-cart.ts";
 import { daribarProductId, daribarVariantId } from "../src/lib/daribar/ids.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 function raw(sku, price = 1000) {
   return { sku, name: `Товар ${sku}`, categories_ids: ["9"], min_customer_price: price, quantity: 3 };
@@ -23,63 +22,60 @@ test("catalogue provider defaults to Medusa and supports shadow and one-step Dar
 });
 
 test("snapshot normalizer creates one native product and variant identity per Daribar SKU", () => {
-  const firstSku = daribarUuid("SKU-ONE"), secondSku = daribarUuid("SKU-TWO");
   const products = normalizeDaribarSnapshot({
     uniqueCount: 2,
-    products: [raw(firstSku, 1250), raw(secondSku, 2400)],
+    products: [raw("SKU-ONE", 1250), raw("SKU-TWO", 2400)],
   });
   assert.equal(products.length, 2);
   assert.equal(products[0].product.source, "daribar");
-  assert.equal(products[0].product_id, daribarProductId(firstSku));
-  assert.equal(products[0].variant_id, daribarVariantId(firstSku));
+  assert.equal(products[0].product_id, daribarProductId("SKU-ONE"));
+  assert.equal(products[0].variant_id, daribarVariantId("SKU-ONE"));
   assert.equal(products[0].price_amount, 1250);
-  const duplicateSku = daribarUuid("DUP");
-  assert.throws(() => normalizeDaribarSnapshot({ uniqueCount: 2, products: [raw(duplicateSku), raw(duplicateSku)] }),
+  assert.throws(() => normalizeDaribarSnapshot({ uniqueCount: 2, products: [raw("DUP"), raw("DUP")] }),
     /daribar_catalog_normalized_duplicate/);
-  assert.throws(() => normalizeDaribarSnapshot({ uniqueCount: 1, products: [raw("1234567890")] }),
-    /daribar_catalog_normalized_incomplete/);
 });
 
 test("database reader serves only a complete active published Daribar run", async () => {
-  const sku = daribarUuid("SKU-DB");
-  const product = normalizeDaribarSnapshot({ uniqueCount: 1, products: [raw(sku)] })[0].product;
+  const product = normalizeDaribarSnapshot({ uniqueCount: 1, products: [raw("SKU-DB")] })[0].product;
   const queries = [];
   const database = { query: async (sql, values) => {
     queries.push([sql, values]);
     if (sql.includes("FROM daribar_catalog_state state")) return { rows: [{
       run_id: "run-1", generated_at: "2026-09-23T00:00:00.000Z", city: "Алматы",
-      source_count: 1, normalized_count: 1, uuid_count: 1, checksum: "a".repeat(64),
+      source_count: 1, normalized_count: 1, checksum: "a".repeat(64),
     }] };
     return { rows: [{ product }] };
   } };
   const snapshot = await readDaribarCatalogDatabase(database);
   assert.equal(snapshot.runId, "run-1");
-  assert.equal(snapshot.products[0].sku, sku);
+  assert.equal(snapshot.products[0].sku, "SKU-DB");
   assert.equal(queries.length, 2);
 });
 
 test("provider-specific cart accepts Daribar native IDs and rejects mixed Medusa identity", () => {
-  const sku = daribarUuid("SKU-CART");
-  const item = { product: { id: daribarProductId(sku), variantId: daribarVariantId(sku),
-    sku, source: "daribar" }, qty: 2 };
+  const item = { product: { id: daribarProductId("SKU-CART"), variantId: daribarVariantId("SKU-CART"),
+    sku: "SKU-CART", source: "daribar" }, qty: 2 };
   assert.equal(validCartItemForProvider(item, "daribar"), true);
   assert.equal(validCartItemForProvider(item, "medusa"), false);
-  assert.equal(validCartItemForProvider({ ...item, product: { ...item.product, sku: daribarUuid("OTHER") } }, "daribar"), false);
 });
 
-test("cutover has one batch availability route and no last_offer_count stock read", async () => {
-  const [route, localRead, cutoverMigration, uuidMigration, stack] = await Promise.all([
+test("cutover keeps Daribar UUID projection while serving the complete provider SKU set", async () => {
+  const [route, localRead, migration, uuidMigration, fullCatalogMigration, stack] = await Promise.all([
     readFile(new URL("../src/app/api/cart/availability/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/catalog-local-read.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/migrations/025_daribar_catalog.sql", import.meta.url), "utf8"),
     readFile(new URL("../db/migrations/027_daribar_uuid_identity.sql", import.meta.url), "utf8"),
+    readFile(new URL("../db/migrations/028_daribar_full_provider_catalog.sql", import.meta.url), "utf8"),
     readFile(new URL("../scripts/sync-daribar-stack.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(route, /requestDaribarStockQuotes/);
   assert.match(route, /lines: selected\.quote\.lines/);
   assert.doesNotMatch(localRead, /last_offer_count/);
-  assert.match(cutoverMigration, /active_run_id/);
-  assert.match(uuidMigration, /daribar_uuid/);
+  assert.match(migration, /active_run_id/);
+  assert.match(migration, /previous_run_id/);
+  assert.match(uuidMigration, /ADD COLUMN IF NOT EXISTS daribar_uuid/);
+  assert.match(fullCatalogMigration, /DROP CONSTRAINT IF EXISTS daribar_catalog_products_uuid_required/);
+  assert.doesNotMatch(fullCatalogMigration, /DELETE FROM|TRUNCATE/i);
   assert.ok(stack.indexOf("sync-typesense-catalog") < stack.indexOf("publish-daribar-catalog"));
 });
 

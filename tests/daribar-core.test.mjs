@@ -15,10 +15,7 @@ import {
   daribarSkuFromProductId,
   daribarSkuFromSlug,
   daribarVariantId,
-  isDaribarUuid,
-  normalizeDaribarUuid,
 } from "../src/lib/daribar/ids.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 function withEnv(patch, run) {
   const before = Object.fromEntries(Object.keys(patch).map((key) => [key, process.env[key]]));
@@ -81,20 +78,16 @@ test("Daribar origins are pinned to exact HTTPS hosts", () => {
 });
 
 test("Daribar product IDs bind one validated SKU to product, variant and slug", () => {
-  const sku = daribarUuid("SKU-123_ABC.7");
+  const sku = "SKU-123_ABC.7";
   const productId = daribarProductId(sku);
   const variantId = daribarVariantId(sku);
   const slug = daribarProductSlug("Тестовый товар с длинным названием", sku);
   assert.equal(daribarSkuFromProductId(productId), sku);
   assert.equal(daribarSkuFromIds(productId, variantId), sku);
-  assert.equal(daribarSkuFromIds(productId, daribarVariantId(daribarUuid("SKU-OTHER"))), null);
+  assert.equal(daribarSkuFromIds(productId, daribarVariantId("SKU-OTHER")), null);
   assert.equal(daribarSkuFromSlug(slug), sku);
   assert.ok(slug.length <= 199);
   assert.throws(() => daribarProductId("../../admin"), /invalid_daribar_sku/);
-  assert.throws(() => daribarProductId("1234567890"), /invalid_daribar_sku/);
-  assert.equal(isDaribarUuid(sku), true);
-  assert.equal(isDaribarUuid(sku.toUpperCase()), false);
-  assert.equal(normalizeDaribarUuid(sku.toUpperCase()), sku);
 });
 
 test("catalog and search route through the rollback-safe provider facade", () => {

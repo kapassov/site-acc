@@ -1,7 +1,6 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { kztMinorUnits } from "./money.ts";
 import { checkoutItemSource, type CanonicalCheckoutItem } from "./checkoutItems.ts";
-import { isDaribarSku } from "./daribar/ids.ts";
 import type { CheckoutFulfillment } from "./checkoutPricing";
 
 export type StandardNLine = CanonicalCheckoutItem & {
@@ -88,7 +87,7 @@ export function validStandardNQuote(value: unknown, items: CanonicalCheckoutItem
     const item = expected.get(line?.variantId);
     const source = item ? checkoutItemSource(item) : null;
     const validWareId = Boolean(item && line) && (source === "daribar"
-      ? isDaribarSku(line.wareId)
+      ? /^[A-Za-z0-9._:-]{1,96}$/.test(line.wareId)
       : /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(line.wareId));
     if (!item || line.productId !== item.productId || line.quantity !== item.quantity
         || !validWareId

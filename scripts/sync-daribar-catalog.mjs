@@ -10,7 +10,7 @@ export const ROOT_CATEGORY = "145";
 export const CATEGORY_ENDPOINT = "/api/v1/search/category";
 
 const ALLOWED_HOSTS = new Set(["backoffice.daribar.com", "prod-backoffice.daribar.com"]);
-const DARIBAR_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SKU = /^[A-Za-z0-9._:-]{1,96}$/;
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 const MAX_PRODUCTS = 200_000;
@@ -173,9 +173,9 @@ export function dedupeRawProducts(rawProducts) {
   let invalidSkuCount = 0;
   for (const product of rawProducts) {
     const sku = product && typeof product === "object" && !Array.isArray(product)
-      ? String(product.sku || "").trim().toLowerCase()
+      ? String(product.sku || "").trim()
       : "";
-    if (!DARIBAR_UUID.test(sku)) {
+    if (!SKU.test(sku)) {
       invalidSkuCount += 1;
       continue;
     }
@@ -219,9 +219,8 @@ export async function collectProviderCatalog(fetchPage, { pageSize = 500, concur
   if (deduped.products.length === 0 || deduped.products.length > first.totalCount) {
     throw new Error("daribar_snapshot_count_invalid");
   }
-  // Completeness is measured before rejecting legacy Standard-N/numeric IDs.
-  // Those records are deliberately quarantined until they have a Daribar UUID.
-  if (rawProducts.length < Math.floor(first.totalCount * 0.9)) {
+  // A large gap indicates partial/unstable provider pagination. Never publish it.
+  if (deduped.products.length < Math.floor(first.totalCount * 0.9)) {
     throw new Error("daribar_snapshot_incomplete");
   }
   return {

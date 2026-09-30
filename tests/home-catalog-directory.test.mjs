@@ -6,7 +6,6 @@ import { catalogNavigationNode } from "../src/components/catalog/catalog-navigat
 import { CATALOG_DIRECTORY } from "../src/lib/catalog-directory.ts";
 import { medusaDirectory } from "../src/lib/medusa-directory.ts";
 import { daribarCategoryIds, mapDaribarProduct } from "../src/lib/daribar/catalog-data.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 test("retired Daribar directory mapping retains its isolated legacy contract", () => {
   assert.ok(CATALOG_DIRECTORY.length >= 8);
@@ -39,7 +38,7 @@ test("Daribar child category IDs become filterable storefront handles", () => {
   for (const group of CATALOG_DIRECTORY) {
     const child = group.children[0];
     const product = mapDaribarProduct({
-      sku: daribarUuid(`TEST-${child.daribarIds[0]}`),
+      sku: `TEST-${child.daribarIds[0]}`,
       name: `Тестовый товар ${child.name}`,
       manufacturer: "Test",
       categories_ids: [child.daribarIds[0], group.daribarIds[0], "145", "2"],

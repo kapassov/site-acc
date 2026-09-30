@@ -127,10 +127,9 @@ export async function publishDaribarCatalog(options = {}) {
       INSERT INTO daribar_catalog_runs (
         id, status, city, generated_at, source_count, normalized_count, checksum, metrics
       ) VALUES ($1, 'staging', $2, $3, $4, 0, $5, $6::jsonb)
-    `, [runId, snapshot.city, snapshot.generatedAt, snapshot.totalCount, digest, JSON.stringify({
+    `, [runId, snapshot.city, snapshot.generatedAt, snapshot.uniqueCount, digest, JSON.stringify({
       schema: snapshot.schema,
       raw_count: snapshot.rawCount,
-      eligible_uuid_count: snapshot.uniqueCount,
       duplicate_count: snapshot.duplicateCount,
       invalid_sku_count: snapshot.invalidSkuCount,
       pages_fetched: snapshot.pagesFetched,
@@ -141,7 +140,9 @@ export async function publishDaribarCatalog(options = {}) {
     const verified = await client.query(`
       SELECT count(*)::integer AS count,
              count(*) FILTER (WHERE price_amount IS NOT NULL)::integer AS priced,
-             count(DISTINCT sku)::integer AS distinct_skus
+             count(DISTINCT sku)::integer AS distinct_skus,
+             count(daribar_uuid)::integer AS uuid_count,
+             count(*) FILTER (WHERE daribar_uuid IS NULL)::integer AS standard_count
       FROM daribar_catalog_products WHERE run_id = $1
     `, [runId]);
     const metrics = verified.rows[0];
@@ -157,7 +158,11 @@ export async function publishDaribarCatalog(options = {}) {
       SET status = 'published', normalized_count = $2, published_at = now(),
           metrics = metrics || $3::jsonb
       WHERE id = $1 AND status = 'staging'
-    `, [runId, products.length, JSON.stringify({ priced_count: metrics.priced })]);
+    `, [runId, products.length, JSON.stringify({
+      priced_count: metrics.priced,
+      uuid_count: metrics.uuid_count,
+      standard_count: metrics.standard_count,
+    })]);
     await client.query(`
       UPDATE daribar_catalog_state
       SET active_run_id = $1, previous_run_id = $2, updated_at = now()
@@ -176,6 +181,8 @@ export async function publishDaribarCatalog(options = {}) {
       checksum: digest,
       count: products.length,
       pricedCount: metrics.priced,
+      uuidCount: metrics.uuid_count,
+      standardCount: metrics.standard_count,
       generatedAt: snapshot.generatedAt,
     };
   } catch (error) {

@@ -6,7 +6,6 @@ import { commerceBaseUrl, commerceSignature, medusaCommerce, validStandardNQuote
 import { createCheckoutQuote, createCourierAnchorQuote, verifyCheckoutQuote } from '../src/lib/checkoutQuote.ts';
 import { validMedusaCartItem, boundedCartQuantity } from '../src/lib/cart/medusa-cart.ts';
 import { daribarProductId, daribarVariantId } from '../src/lib/daribar/ids.ts';
-import { daribarUuid } from './daribar-uuid-fixture.mjs';
 
 const items = [{ productId:'prod_A1',variantId:'variant_V1',quantity:2 }];
 const fixture = () => ({ quoteToken:'signed-upstream-quote-token',snapshotId:'a'.repeat(64),expiresAt:new Date(Date.now()+240000).toISOString(),currency:'KZT',subtotal:400,total:400,pharmacy:{id:'sloc_A1',name:'Аптека',city:'Алматы',address:'Адрес'},lines:[{...items[0],wareId:'12345678-1234-1234-1234-123456789abc',availableQuantity:3,unitPrice:200,total:400}],adjustments:[] });
@@ -60,7 +59,7 @@ test('signed checkout quote cannot be altered or replayed and binds its native p
     assert.equal(verifyCheckoutQuote(Buffer.from(JSON.stringify(payload)).toString('base64url')+'.'+q.id.split('.')[1],items),null);
     payload.version=2;const encoded=Buffer.from(JSON.stringify(payload)).toString('base64url');
     assert.equal(verifyCheckoutQuote(encoded+'.'+createHmac('sha256',process.env.CHECKOUT_QUOTE_SECRET).update(encoded).digest('base64url'),items),null);
-    const sku=daribarUuid('SKU-NATIVE-1');
+    const sku='SKU-NATIVE-1';
     const nativeItems=[{productId:daribarProductId(sku),variantId:daribarVariantId(sku),quantity:1}];
     const nativeQuote={...fixture(),subtotal:250,total:250,lines:[{...nativeItems[0],wareId:sku,availableQuantity:2,unitPrice:250,total:250}]};
     const native=await createCheckoutQuote({items:nativeItems,fulfillment:'pickup'},

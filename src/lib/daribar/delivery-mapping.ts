@@ -5,7 +5,7 @@ import { medusaKnownPriceSql } from "../medusa-stock.ts";
 import { exactKzt } from "../money.ts";
 import { withRegistryCoordinates } from "../pharmacy-coordinate-registry.ts";
 import { DaribarDeliveryError, type DaribarDeliveryItem } from "./delivery.ts";
-import { daribarSkuFromIds, isDaribarSku } from "./ids.ts";
+import { daribarSkuFromIds } from "./ids.ts";
 
 type ProductMappingRow = {
   ware_id: string;
@@ -79,7 +79,7 @@ export async function mapCheckoutItemsToDaribar(items: CanonicalCheckoutItem[]):
     const sku = row?.sku?.trim() || "";
     const wareId = row?.ware_id?.trim().toLowerCase() || "";
     const unitPrice = exactKzt(row?.unit_price);
-    if (!row || !isDaribarSku(sku)
+    if (!row || !/^[A-Za-z0-9._-]{1,160}$/.test(sku)
         || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(wareId)
         || unitPrice <= 0) {
       throw new DaribarDeliveryError(409, "delivery_product_mapping_missing");
@@ -101,7 +101,7 @@ export async function daribarSkuForMedusaProduct(productId: string): Promise<str
   `, [productId]);
   if (result.rows.length !== 1) return null;
   const sku = result.rows[0].sku?.trim() || "";
-  return isDaribarSku(sku) ? sku : null;
+  return /^[A-Za-z0-9._-]{1,160}$/.test(sku) ? sku : null;
 }
 
 export async function mappedDaribarPharmacies(city?: string): Promise<Map<string, DeliveryMappedPharmacy>> {
@@ -140,7 +140,7 @@ export async function mapQuoteLinesToDaribar(lines: StandardNLine[]): Promise<Da
   return lines.map(line => {
     const row = mapped.get(line.wareId.toLowerCase());
     const sku = row?.sku?.trim() || "";
-    if (!row || row.product_id !== line.productId || row.variant_id !== line.variantId || !isDaribarSku(sku)) {
+    if (!row || row.product_id !== line.productId || row.variant_id !== line.variantId || !/^[A-Za-z0-9._-]{1,160}$/.test(sku)) {
       throw new DaribarDeliveryError(409, "delivery_product_mapping_missing");
     }
     if (seen.has(sku)) throw new DaribarDeliveryError(409, "delivery_product_mapping_ambiguous");

@@ -11,12 +11,11 @@ import {
   syncTypesenseCatalog,
   validateTypesenseImportResponse,
 } from "../scripts/sync-typesense-catalog.mjs";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 const config = { url: "http://127.0.0.1:8108", apiKey: "test-admin-key", collection: "daribar-products" };
 const NOW = Date.now();
 const beforeTime = new Date(NOW - 1000).toISOString();
-const raw = (sku) => ({ sku: daribarUuid(sku), name: `Парацетамол ${sku} 500 мг таблетки №10`, min_customer_price: 100, quantity: 3 });
+const raw = (sku) => ({ sku, name: `Парацетамол ${sku} 500 мг таблетки №10`, min_customer_price: 100, quantity: 3 });
 function snapshot(products = [raw("SKU-ONE"), raw("SKU-TWO")], generatedAt = beforeTime) {
   return buildSnapshotDocument({
     products, totalCount: products.length, totalPages: 1, pagesFetched: 1,

@@ -6,10 +6,9 @@ import test from "node:test";
 import { atomicWriteSnapshot, buildSnapshotDocument } from "../scripts/sync-daribar-catalog.mjs";
 import { parseCatalogQuery } from "../src/lib/catalog-query.ts";
 import { getDaribarCatalogPage, searchDaribarProductsWithMetadata } from "../src/lib/daribar/catalog.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 const raw = (sku, name, extra = {}) => ({
-  sku: daribarUuid(sku), name, min_customer_price: 100, quantity: 2,
+  sku, name, min_customer_price: 100, quantity: 2,
   manufacturer: "Test Pharma", categories_ids: ["9", "145"], recipe_needed: "0", ...extra,
 });
 const names = [
@@ -80,7 +79,7 @@ async function fixture(t, options = {}) {
 test("unavailable Typesense and empty misspelled keyword recover through source-canonical Daribar lookup", async t => {
   const state = await fixture(t);
   const result = await searchDaribarProductsWithMetadata("пороцетомол", 48, "Алматы");
-  assert.deepEqual(result.products.map(item => item.sku), ["PARA-200", "PARA-500", "PARA-CAPS"].map(daribarUuid));
+  assert.deepEqual(result.products.map(item => item.sku), ["PARA-200", "PARA-500", "PARA-CAPS"]);
   assert.ok(result.products.every(item => item.source === "daribar" && item.price === 987));
   assert.equal(result.engine, "daribar");
   assert.equal(result.stale, false);
@@ -117,7 +116,7 @@ test("оспирин resolves to the source Aspirin identity even when Daribar s
     return originalFetch(input, init);
   };
   const result = await searchDaribarProductsWithMetadata("оспирин", 48, "Алматы");
-  assert.deepEqual(result.products.map(item => item.sku), [daribarUuid("ASPIRIN")]);
+  assert.deepEqual(result.products.map(item => item.sku), ["ASPIRIN"]);
   assert.equal(result.search.matchedQuery, "Аспирин");
   assert.ok(state.keywords().includes("оспирин"));
 });
@@ -127,7 +126,7 @@ test("a unique partial name «тирз» finds Tirzetta with live city prices wh
   const liveProducts = sourceProducts.map(item => ({ ...item, min_customer_price: 1245, quantity: 3 }));
   const state = await fixture(t, { sourceProducts, liveProducts, correctedKeyword: "тирзетта" });
   const result = await searchDaribarProductsWithMetadata("тирз", 48, "Алматы");
-  assert.deepEqual(result.products.map(item => item.sku), ["TIR-25", "TIR-50"].map(daribarUuid));
+  assert.deepEqual(result.products.map(item => item.sku), ["TIR-25", "TIR-50"]);
   assert.ok(result.products.every(item => item.price === 1245));
   assert.deepEqual(result.search, { query: "тирз", matchedQuery: null, matchType: "exact", degraded: true });
   assert.deepEqual(state.keywords(), ["тирз", "тирзетта"]);
@@ -136,7 +135,7 @@ test("a unique partial name «тирз» finds Tirzetta with live city prices wh
 test("native retry keeps original dose, unit, form and package despite broad canonical response", async t => {
   const state = await fixture(t);
   const result = await searchDaribarProductsWithMetadata("пороцетомол 200 мг таблетки №10", 48, "Алматы");
-  assert.deepEqual(result.products.map(item => item.sku), [daribarUuid("PARA-200")]);
+  assert.deepEqual(result.products.map(item => item.sku), ["PARA-200"]);
   assert.equal(result.search.query, "пороцетомол 200 мг таблетки №10");
   assert.equal(result.search.matchType, "typo");
   assert.equal(result.search.matchedQuery, null, "feedback must not drop the entered numeric/form constraints");
@@ -181,7 +180,7 @@ test("an existing literal native name remains authoritative instead of invoking 
   const literal = raw("LITERAL", "Пороцетомол 200 мг таблетки №10");
   const state = await fixture(t, { sourceProducts: [...names, literal], originalProducts: [literal] });
   const result = await searchDaribarProductsWithMetadata("пороцетомол", 48, "Алматы");
-  assert.deepEqual(result.products.map(item => item.sku), [daribarUuid("LITERAL")]);
+  assert.deepEqual(result.products.map(item => item.sku), ["LITERAL"]);
   assert.equal(result.search.matchType, "exact");
   assert.equal(result.search.matchedQuery, null);
   assert.deepEqual(state.keywords(), ["пороцетомол"]);

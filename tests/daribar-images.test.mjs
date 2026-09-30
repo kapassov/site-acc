@@ -7,16 +7,14 @@ import {
   detectDaribarImageMime,
   isGenericBinaryMime,
 } from "../src/lib/daribar/images.ts";
-import { daribarUuid } from "./daribar-uuid-fixture.mjs";
 
 test("Daribar image URLs stay pinned to the optimized image origin", () => {
   const original = process.env.DARIBAR_IMAGE_URL;
   delete process.env.DARIBAR_IMAGE_URL;
   try {
-    const sku = daribarUuid("12345-A");
     assert.equal(
-      daribarImageUrl(sku).href,
-      `https://db-images.object.pscloud.io/optimized_v4_img_small_${sku}.webp`,
+      daribarImageUrl("12345-A").href,
+      "https://db-images.object.pscloud.io/optimized_v4_img_small_12345-A.webp",
     );
     assert.throws(() => daribarImageUrl("../../admin"), /invalid_daribar_sku/);
   } finally {

@@ -11,7 +11,7 @@ import {
   daribarProductId,
   daribarProductSlug,
   daribarVariantId,
-  normalizeDaribarUuid,
+  isDaribarSku,
 } from "./ids.ts";
 
 export type DaribarRawProduct = {
@@ -195,9 +195,9 @@ function canonicalBrandName(value: string): string {
 }
 
 export function mapDaribarProduct(raw: DaribarRawProduct): Product | null {
-  const sku = normalizeDaribarUuid(text(raw.sku, 96));
+  const sku = text(raw.sku, 96);
   const name = text(raw.name, 300);
-  if (!sku || !name || name.toLocaleLowerCase("ru") === "конфиг-рацион") return null;
+  if (!isDaribarSku(sku) || !name || name.toLocaleLowerCase("ru") === "конфиг-рацион") return null;
   const attrs = attributes(raw.attributes);
   const price = positivePrice(raw.min_customer_price, raw.avg_customer_price, raw.max_customer_price, raw.price);
   const stockQuantity = quantity(raw.quantity);
