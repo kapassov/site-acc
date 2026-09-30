@@ -14,6 +14,8 @@ type IndexedProduct = { product: Product; nameWords: string[]; mnnWords: string[
 const GENERIC_QUERY_ALIASES = new Map([
   ["шприцы", "шприц"],
   ["шприцов", "шприц"],
+  ["спиртовые салфетки", "спиртовая салфетка"],
+  ["спритовые салфетки", "спиртовая салфетка"],
 ]);
 
 const searchIndexes = new WeakMap<readonly Product[], IndexedProduct[]>();
@@ -140,6 +142,11 @@ export function searchDaribarPostgresProducts(input: {
           Number(!normalizeProductSearchText(left.name).startsWith("шприц "))
           - Number(!normalizeProductSearchText(right.name).startsWith("шприц "))
           || Number(right.inStock) - Number(left.inStock)
+          || Number(right.stockPharmacies || 0) - Number(left.stockPharmacies || 0)
+        ));
+      } else if (genericAlias === "спиртовая салфетка") {
+        nameHits = nameHits.sort((left, right) => (
+          Number(right.inStock) - Number(left.inStock)
           || Number(right.stockPharmacies || 0) - Number(left.stockPharmacies || 0)
         ));
       }

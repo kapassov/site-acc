@@ -55,6 +55,18 @@ test("available search matches lead unavailable matches", () => {
   assert.deepEqual(result.products.map((value) => value.sku), ["AVAILABLE", "UNAVAILABLE"]);
 });
 
+test("plural and misspelled alcohol-wipe queries find available singular items first", () => {
+  const unavailable = { ...product("PACK", "Спиртовые салфетки M-Wipes №100"),
+    inStock: false, stockPharmacies: 0 };
+  const available = product("SINGLE", "Спиртовая салфетка Biopad Budget 65x60 мм №1");
+  assert.equal(searchDaribarPostgresProducts({
+    query: "спиртовые салфетки", products: [unavailable, available],
+  }).products[0].sku, "SINGLE");
+  assert.equal(searchDaribarPostgresProducts({
+    query: "спритовые салфетки", products: [unavailable, available],
+  }).products[0].sku, "SINGLE");
+});
+
 test("PostgreSQL search includes brands found by active ingredient/MNN", () => {
   const result = searchDaribarPostgresProducts({ query: "панкреатин", products });
   assert.deepEqual(new Set(result.products.map((value) => value.sku)), new Set(["PAN", "CREON"]));
