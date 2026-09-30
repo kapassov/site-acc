@@ -134,8 +134,8 @@ export async function POST(req: Request) {
     const session = await customerSession(req);
     if (session.status === "anonymous") return respond({ error: "auth_required" }, 401);
     if (session.status === "unavailable") return respond({ error: "auth_unavailable" }, 503);
-    const access = daribarCommerceEnabled ? daribarServiceToken() : "";
-    if (daribarCommerceEnabled && (!access || access.length < 20 || /\s/.test(access))) {
+    const serviceToken = daribarCommerceEnabled ? daribarServiceToken() : "";
+    if (daribarCommerceEnabled && (!serviceToken || serviceToken.length < 20 || /\s/.test(serviceToken))) {
       return respond({ error: "order_service_unavailable" }, 503);
     }
     const profile = { phone: session.phone, name: session.name, email: session.email };
@@ -206,7 +206,7 @@ export async function POST(req: Request) {
     if (daribarCommerceEnabled) {
       step = "daribar_order";
       const daribarOrder = await createDaribarOrderForQuote({
-        quote: verifiedQuote, items, accessToken: access, phone: profile.phone,
+        quote: verifiedQuote, items, phone: profile.phone,
         delivery: delivery as "courier" | "pickup", payment: payment as "card" | "cash",
         city, address: shipping.address1, comment, channel: authorization ? "mobile_app" : "web",
         deliveryDetails,
@@ -263,7 +263,6 @@ export async function POST(req: Request) {
         step = "daribar_delivery_claim";
         try {
           const claim = await createDaribarDeliveryClaim({
-            accessToken: access,
             orderId: daribarOrder.id,
             quote: verifiedQuote.delivery,
             city,

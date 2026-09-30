@@ -34,7 +34,6 @@ export async function POST(request: Request) {
   }
   const fulfillment = body.fulfillment === "pickup" ? "pickup" : "pharmacy";
   const paymentMethod = body.paymentMethod === "cash" ? "cash" : "card";
-  let deliveryAccessToken: string | undefined;
   try {
     if (!prescriptionCheckoutAllowed(await checkoutHasPrescription(items), fulfillment, paymentMethod)) {
       return NextResponse.json({ error: "prescription_pickup_cash_only" }, { status: 409, headers: NO_STORE });
@@ -43,8 +42,7 @@ export async function POST(request: Request) {
       const session = await customerSession(request);
       if (session.status === "anonymous") return reply({ error: "delivery_auth_required" }, 401);
       if (session.status === "unavailable") return reply({ error: "delivery_service_unavailable" }, 503);
-      deliveryAccessToken = daribarServiceToken();
-      if (!deliveryAccessToken) return reply({ error: "delivery_service_unavailable" }, 503);
+      if (!daribarServiceToken()) return reply({ error: "delivery_service_unavailable" }, 503);
     }
     const quote = await createCheckoutQuote({
       items: items as QuoteItem[],
@@ -56,7 +54,6 @@ export async function POST(request: Request) {
       deliveryRequest: body.deliveryRequest && typeof body.deliveryRequest === "object"
         ? body.deliveryRequest as { mode: "city" | "pharmacy"; city: string; address: string; pharmacyId?: string }
         : null,
-      deliveryAccessToken,
     });
     return reply({ quote }, 200);
   } catch (error) {

@@ -170,15 +170,11 @@ async function call(path: "/api/v2/delivery/prices" | "/api/v2/delivery/alternat
     throw error;
   }
 }
-async function callPublic(path: "/public/api/v2/delivery/prices" | "/public/api/v2/delivery/best", body: unknown, accessToken?: string): Promise<unknown> {
+async function callPublic(path: "/public/api/v2/delivery/prices" | "/public/api/v2/delivery/best", body: unknown): Promise<unknown> {
   if (!isDaribarPublicDeliveryEnabled()) throw new DaribarDeliveryError(503, "delivery_not_enabled");
-  const token = typeof accessToken === "string" ? accessToken.trim() : "";
-  if (token.length < 20 || token.length > 8_192 || /\s/.test(token)) {
-    throw new DaribarDeliveryError(401, "delivery_auth_required");
-  }
   try {
-    return await daribarJson(path, { method: "POST", origin: "commerce", auth: false, body,
-      headers: { authorization: `Bearer ${token}` }, timeoutMs: 20_000, maxBytes: 512 * 1024 });
+    return await daribarJson(path, { method: "POST", origin: "commerce", auth: true, body,
+      timeoutMs: 20_000, maxBytes: 512 * 1024 });
   } catch (error) {
     if (error instanceof DaribarHttpError) {
       if (error.status === 404) throw new DaribarDeliveryError(503, "delivery_endpoint_not_available");
@@ -189,12 +185,12 @@ async function callPublic(path: "/public/api/v2/delivery/prices" | "/public/api/
     throw error;
   }
 }
-export async function deliveryForPharmacy(input: { sourceCode: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination; accessToken?: string }): Promise<DaribarDeliveryOffer> {
+export async function deliveryForPharmacy(input: { sourceCode: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination }): Promise<DaribarDeliveryOffer> {
   const sourceCode = text(input.sourceCode, 128), items = normalizedItems(input.items);
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(sourceCode)) throw new DaribarDeliveryError(400, "invalid_delivery_pharmacy");
   const body = { source_code: sourceCode, items, dst: normalizeDeliveryDestination(input.destination) };
   const response = unwrap(isDaribarPublicDeliveryEnabled()
-    ? await callPublic("/public/api/v2/delivery/prices", body, input.accessToken)
+    ? await callPublic("/public/api/v2/delivery/prices", body)
     : await call("/api/v2/delivery/prices", body));
   if (response.result === null) throw new DaribarDeliveryError(409, "selected_pharmacy_unavailable");
   const parsed = parseDaribarDeliveryOffer(response.result, items.map(item => ({ sku: item.sku, countDesired: item.count_desired })));
@@ -202,14 +198,14 @@ export async function deliveryForPharmacy(input: { sourceCode: string; items: Da
   if (!offer || offer.pharmacy.code !== sourceCode) throw new DaribarDeliveryError(502, "delivery_invalid_response");
   return offer;
 }
-export async function bestDeliveryInCity(input: { city: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination; sourceCode: string; accessToken?: string }): Promise<{ best: DaribarDeliveryOffer; alternatives: DaribarDeliveryOffer[] }> {
+export async function bestDeliveryInCity(input: { city: string; items: DaribarDeliveryItem[]; destination: DaribarDeliveryDestination; sourceCode: string }): Promise<{ best: DaribarDeliveryOffer; alternatives: DaribarDeliveryOffer[] }> {
   const city = text(input.city, 100), sourceCode = text(input.sourceCode, 128), items = normalizedItems(input.items);
   if (!city) throw new DaribarDeliveryError(400, "delivery_city_required");
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(sourceCode)) throw new DaribarDeliveryError(400, "invalid_delivery_pharmacy");
   const destination = normalizeDeliveryDestination(input.destination);
   if (isDaribarPublicDeliveryEnabled()) {
     const response = unwrap(await callPublic("/public/api/v2/delivery/best",
-      { city, source_code: sourceCode, items, dst: destination, limit: 10 }, input.accessToken));
+      { city, source_code: sourceCode, items, dst: destination, limit: 10 }));
     const result = record(response.result);
     if (!result || !Array.isArray(result.alternatives)) throw new DaribarDeliveryError(502, "delivery_invalid_response");
     if (result.best === null) throw new DaribarDeliveryError(409, "no_delivery_available");

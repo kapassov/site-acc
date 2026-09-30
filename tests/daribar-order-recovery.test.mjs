@@ -24,12 +24,11 @@ test("customer orders are owned by our customer id and refresh Daribar status wi
   const route = await readFile(ORDERS_ROUTE, "utf8");
   const session = route.indexOf("await customerSession(req)");
   const localOrders = route.indexOf("await listCustomerOrders(session.customerId, 100)", session);
-  const serviceToken = route.indexOf("daribarServiceToken()", localOrders);
-  const feed = route.indexOf("await getDaribarCustomerOrderFeed(accessToken)", serviceToken);
-  const fallback = route.indexOf("await getDaribarCustomerOrder(accessToken, order.sourceOrderId)", feed);
+  const feed = route.indexOf("await getDaribarCustomerOrderFeed()", localOrders);
+  const fallback = route.indexOf("await getDaribarCustomerOrder(order.sourceOrderId)", feed);
 
-  assert.ok(session >= 0 && localOrders > session && serviceToken > localOrders);
-  assert.ok(feed > serviceToken && fallback > feed);
+  assert.ok(session >= 0 && localOrders > session && feed > localOrders && fallback > feed);
   assert.match(route, /providerMetadataPatch\(snapshot, payment\)/);
   assert.doesNotMatch(route, /daribarCustomerSession|setDaribarAuthCookies|DARIBAR_ACCESS_COOKIE/);
+  assert.doesNotMatch(route, /daribarServiceToken|accessToken/);
 });

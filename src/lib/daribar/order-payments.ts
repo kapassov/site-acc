@@ -200,14 +200,7 @@ export function summarizeDaribarOrderPayments(payments: DaribarOrderPayment[]): 
   };
 }
 
-function authorization(token: string): Record<string, string> {
-  const credential = text(token, 8_192);
-  if (!credential || /\s/.test(credential)) throw new Error("daribar_auth_required");
-  return { authorization: `Bearer ${credential}` };
-}
-
 export async function getDaribarCustomerOrderPayment(
-  token: string,
   orderId: string,
 ): Promise<DaribarOrderPaymentSnapshot | null> {
   const normalizedId = text(orderId, 256);
@@ -216,8 +209,7 @@ export async function getDaribarCustomerOrderPayment(
     `/api/v1/orders/${encodeURIComponent(normalizedId)}/payments`,
     {
       origin: "order",
-      auth: false,
-      headers: authorization(token),
+      auth: true,
       timeoutMs: 8_000,
       maxBytes: 2 * 1024 * 1024,
     },

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { customerSession } from "@/lib/customerSession";
-import { daribarServiceToken } from "@/lib/daribar/config";
 import { getDaribarCustomerOrderPayment } from "@/lib/daribar/order-payments";
 import { getDaribarCustomerOrder } from "@/lib/daribar/order-status";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
@@ -45,12 +44,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (existing) return NextResponse.json({ request: existing }, { headers: HEADERS });
     // A customer request is not a Daribar cancellation/refund. Check the live
     // provider state before accepting one, and keep the order status unchanged.
-    const accessToken = daribarServiceToken();
-    if (!accessToken) return NextResponse.json({ error: "order_request_unavailable" }, { status: 503, headers: HEADERS });
     const [snapshot, payment] = await Promise.all([
-      getDaribarCustomerOrder(accessToken, order.sourceOrderId),
+      getDaribarCustomerOrder(order.sourceOrderId),
       kind === "return"
-        ? getDaribarCustomerOrderPayment(accessToken, order.sourceOrderId).catch(() => null)
+        ? getDaribarCustomerOrderPayment(order.sourceOrderId).catch(() => null)
         : Promise.resolve(null),
     ]);
     const actions = availableServiceActions(order, snapshot, payment);

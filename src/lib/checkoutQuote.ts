@@ -62,7 +62,6 @@ export async function createCheckoutQuote(input: {
   paymentMethod?: "card" | "cash";
   preferredPharmacy?: { id?: string; sourceCode?: string; address?: string; city?: string } | null;
   deliveryRequest?: CheckoutDeliveryRequest | null;
-  deliveryAccessToken?: string;
 }, dependencies: CheckoutQuoteDependencies = DEFAULT_QUOTE_DEPENDENCIES): Promise<CheckoutQuote> {
   const items = canonicalizeCheckoutItems(input.items);
   if (!items || items.length > 30) throw new CheckoutQuoteError(400, "invalid_quote_items");
@@ -88,7 +87,7 @@ export async function createCheckoutQuote(input: {
       const { resolveCheckoutDelivery } = await import("./checkout-delivery.ts");
       let resolved: Awaited<ReturnType<typeof resolveCheckoutDelivery>> | undefined;
       try {
-        resolved = await resolveCheckoutDelivery(quote, input.deliveryRequest, input.deliveryAccessToken);
+        resolved = await resolveCheckoutDelivery(quote, input.deliveryRequest);
       } catch (error) {
         // If the selected pharmacy cannot deliver, try only other pharmacies
         // returned by the same live Daribar v3 full-basket search.
@@ -109,7 +108,7 @@ export async function createCheckoutQuote(input: {
               mode: "pharmacy",
               city: candidate.pharmacy.city,
               pharmacyId: candidate.pharmacy.id,
-            }, input.deliveryAccessToken);
+            });
             quote = candidateQuote;
             resolved = candidateResolved;
             break;

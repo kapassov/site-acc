@@ -114,13 +114,14 @@ test("customer order detail polls the documented payment endpoint with the serve
   const route = await readFile(new URL("../src/app/api/customer/orders/[id]/route.ts", import.meta.url), "utf8");
   const listRoute = await readFile(new URL("../src/app/api/customer/orders/route.ts", import.meta.url), "utf8");
   assert.match(client, /`\/api\/v1\/orders\/\$\{encodeURIComponent\(normalizedId\)\}\/payments`/);
-  assert.match(client, /authorization: `Bearer \$\{credential\}`/);
+  assert.match(client, /auth: true/);
+  assert.doesNotMatch(client, /authorization: `Bearer|accessToken|credential/);
   assert.match(client, /origin: "order"/);
-  assert.match(route, /getDaribarCustomerOrderPayment\(accessToken, order\.sourceOrderId\)/);
+  assert.match(route, /getDaribarCustomerOrderPayment\(order\.sourceOrderId\)/);
   assert.match(route, /providerMetadataPatch\(snapshot, payment\)/);
   assert.doesNotMatch(route, /paymentUrl|payment_url/);
   assert.match(listRoute, /paymentCandidates[\s\S]*?\.slice\(0, 5\)/);
-  assert.match(listRoute, /const accessToken = daribarServiceToken\(\)/);
-  assert.match(listRoute, /getDaribarCustomerOrderPayment\(accessToken, order\.sourceOrderId\)/);
+  assert.doesNotMatch(listRoute, /daribarServiceToken|accessToken/);
+  assert.match(listRoute, /getDaribarCustomerOrderPayment\(order\.sourceOrderId\)/);
   assert.match(listRoute, /customerOrderSummary\([\s\S]*?paymentFeed\.get\(order\.sourceOrderId\)/);
 });

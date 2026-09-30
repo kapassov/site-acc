@@ -127,39 +127,33 @@ export function parseDaribarOrderStatuses(payload: unknown): Map<string, Daribar
   return new Map([...parseDaribarOrderFeed(payload)].map(([id, value]) => [id, value.status]));
 }
 
-function authorization(token: string): Record<string, string> {
-  const credential = text(token, 8_192);
-  if (!credential || /\s/.test(credential)) throw new Error("daribar_auth_required");
-  return { authorization: `Bearer ${credential}` };
-}
-
-/** Current Daribar Swagger requires Authorization: Bearer for account orders. */
-export async function getDaribarCustomerOrderFeed(token: string): Promise<Map<string, DaribarOrderSnapshot>> {
+/** Order reads use the server-owned B2B credential, never a customer token. */
+export async function getDaribarCustomerOrderFeed(): Promise<Map<string, DaribarOrderSnapshot>> {
   const payload = await daribarJson<unknown>("/api/v1/orders", {
-    origin: "order", auth: false, headers: authorization(token),
+    origin: "order", auth: true,
     query: { limit: 100, offset: 0 }, timeoutMs: 8_000, maxBytes: 2 * 1024 * 1024,
   });
   return parseDaribarOrderFeed(payload);
 }
 
-export async function getDaribarCustomerOrderStatuses(token: string): Promise<Map<string, DaribarOrderStatus>> {
-  const feed = await getDaribarCustomerOrderFeed(token);
+export async function getDaribarCustomerOrderStatuses(): Promise<Map<string, DaribarOrderStatus>> {
+  const feed = await getDaribarCustomerOrderFeed();
   return new Map([...feed].map(([id, value]) => [id, value.status]));
 }
 
-export async function getDaribarCustomerOrder(token: string, orderId: string): Promise<DaribarOrderSnapshot> {
+export async function getDaribarCustomerOrder(orderId: string): Promise<DaribarOrderSnapshot> {
   const normalizedId = text(orderId, 256);
   if (!/^[A-Za-z0-9._:-]{1,256}$/.test(normalizedId)) throw new Error("invalid_order_id");
   let payload: unknown;
   try {
     payload = await daribarJson<unknown>(`/api/v1/orders/${encodeURIComponent(normalizedId)}`, {
-      origin: "order", auth: false, headers: authorization(token),
+      origin: "order", auth: true,
       timeoutMs: 8_000, maxBytes: 2 * 1024 * 1024,
     });
   } catch (error) {
     if (!(error instanceof DaribarHttpError) || ![404, 405].includes(error.status)) throw error;
     payload = await daribarJson<unknown>(`/api/v2/orders/${encodeURIComponent(normalizedId)}`, {
-      origin: "order", auth: false, headers: authorization(token),
+      origin: "order", auth: true,
       timeoutMs: 8_000, maxBytes: 2 * 1024 * 1024,
     });
   }

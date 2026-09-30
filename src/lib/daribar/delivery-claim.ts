@@ -88,7 +88,6 @@ function destinationComment(details: DeliveryDetails | null | undefined): string
 }
 
 export function buildDaribarDeliveryClaimPayload(input: {
-  accessToken: string;
   orderId: string;
   quote: CheckoutDeliveryQuote;
   city: string;
@@ -174,19 +173,14 @@ export async function createDaribarDeliveryClaim(input: Parameters<typeof buildD
   if (!isDaribarDeliveryEnabled()) {
     throw new DaribarDeliveryClaimError(503, "delivery_not_enabled", { definitive: true });
   }
-  const token = String(input.accessToken || "").trim();
-  if (token.length < 20 || token.length > 8_192 || /\s/.test(token)) {
-    throw new DaribarDeliveryClaimError(401, "daribar_auth_required", { definitive: true });
-  }
   const payload = buildDaribarDeliveryClaimPayload(input);
   try {
     const partnerToken = daribarPartnerToken();
     const response = await daribarJson("/api/v2/delivery/claim", {
       method: "POST",
       origin: "commerce",
-      auth: false,
+      auth: true,
       headers: {
-        authorization: `Bearer ${token}`,
         ...(partnerToken ? { "x-partner-token": partnerToken } : {}),
       },
       body: payload,

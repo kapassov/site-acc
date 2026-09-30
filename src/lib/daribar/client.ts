@@ -1,6 +1,6 @@
 import {
   daribarApiOrigin, daribarAuthApiOrigin, daribarCommerceApiOrigin,
-  daribarOrderApiOrigin, daribarServiceToken,
+  daribarIntegrationCode, daribarOrderApiOrigin, daribarServiceToken,
 } from "./config.ts";
 
 type QueryValue = string | number | boolean | null | undefined;
@@ -46,6 +46,17 @@ function safePath(path: string): string {
     throw new DaribarHttpError(500, "invalid_daribar_path");
   }
   return value;
+}
+
+/**
+ * Daribar requires the ASS integration code only for its price and v3 search
+ * contracts. Keeping the allow-list here prevents the partner identifier from
+ * leaking into unrelated order, customer or delivery requests.
+ */
+export function daribarPathNeedsIntegrationCode(path: string): boolean {
+  return path === "/api/v1/prices"
+    || path === "/api/v3/products/search"
+    || path.startsWith("/api/v3/search/");
 }
 
 function boundedInt(value: number | undefined, fallback: number, min: number, max: number): number {
@@ -106,11 +117,12 @@ export async function daribarJson<T = unknown>(
   path: string,
   options: DaribarRequestOptions = {},
 ): Promise<T> {
+  const requestPath = safePath(path);
   const origin = options.origin === "auth" ? daribarAuthApiOrigin()
     : options.origin === "commerce" ? daribarCommerceApiOrigin()
       : options.origin === "order" ? daribarOrderApiOrigin()
         : daribarApiOrigin();
-  const url = new URL(safePath(path), origin);
+  const url = new URL(requestPath, origin);
   for (const [key, raw] of Object.entries(options.query || {})) {
     const values = Array.isArray(raw) ? raw : [raw];
     for (const value of values) {
@@ -126,8 +138,12 @@ export async function daribarJson<T = unknown>(
     headers.set("authorization", `Bearer ${token}`);
   }
   for (const [key, value] of Object.entries(options.headers || {})) {
-    if (/^(host|cookie|content-length)$/i.test(key)) continue;
+    if (/^(host|cookie|content-length|x-integration-code)$/i.test(key)) continue;
+    if (useServiceToken && /^authorization$/i.test(key)) continue;
     headers.set(key, value);
+  }
+  if (daribarPathNeedsIntegrationCode(requestPath)) {
+    headers.set("X-Integration-Code", daribarIntegrationCode());
   }
   if (options.body !== undefined) headers.set("content-type", "application/json");
 

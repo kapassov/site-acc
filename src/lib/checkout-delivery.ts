@@ -39,7 +39,6 @@ async function verifyCurrentDaribarStock(offer: DaribarDeliveryOffer, city: stri
 export async function resolveCheckoutDelivery(
   quote: StandardNQuote,
   request: CheckoutDeliveryRequest,
-  accessToken?: string,
 ): Promise<{ delivery: CheckoutDeliveryQuote; pharmacy: DeliveryMappedPharmacy; alternatives: DaribarDeliveryOffer[] }> {
   if (!request || !["city", "pharmacy"].includes(request.mode)) throw new DaribarDeliveryError(400, "invalid_delivery_mode");
   const city = String(request.city || "").normalize("NFKC").trim().slice(0, 100);
@@ -50,10 +49,10 @@ export async function resolveCheckoutDelivery(
   let offer: DaribarDeliveryOffer, alternatives: DaribarDeliveryOffer[] = [], pharmacy: DeliveryMappedPharmacy;
   if (request.mode === "pharmacy") {
     pharmacy = await mapLocalPharmacyToDaribar(request.pharmacyId || quote.pharmacy.id);
-    offer = await deliveryForPharmacy({ sourceCode: pharmacy.sourceCode, items: mappedItems, destination, accessToken });
+    offer = await deliveryForPharmacy({ sourceCode: pharmacy.sourceCode, items: mappedItems, destination });
   } else {
     const baseline = await mapLocalPharmacyToDaribar(request.pharmacyId || quote.pharmacy.id);
-    const resolved = await bestDeliveryInCity({ city, items: mappedItems, destination, sourceCode: baseline.sourceCode, accessToken });
+    const resolved = await bestDeliveryInCity({ city, items: mappedItems, destination, sourceCode: baseline.sourceCode });
     const mappedOffers: Array<{ offer: DaribarDeliveryOffer; pharmacy: DeliveryMappedPharmacy }> = [];
     for (const candidate of [resolved.best, ...resolved.alternatives]) {
       try {

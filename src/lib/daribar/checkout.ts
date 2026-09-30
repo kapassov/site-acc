@@ -548,14 +548,9 @@ export function buildDaribarOrderPayload(input: {
 }
 
 export async function createDaribarOrder(
-  accessToken: string,
   payload: DaribarOrderPayload,
 ): Promise<DaribarOrderResult> {
   if (!isDaribarEnabled("order")) throw new DaribarCheckoutError(503, "daribar_orders_disabled");
-  const token = String(accessToken || "").trim();
-  if (token.length < 20 || token.length > 8_192 || /\s/.test(token)) {
-    throw new DaribarCheckoutError(401, "daribar_auth_required");
-  }
   let response: {
     status?: unknown;
     result?: { id?: unknown; status?: unknown; payment_url?: unknown; web_link?: unknown } | null;
@@ -567,9 +562,8 @@ export async function createDaribarOrder(
       // Daribar exposes order creation separately from delivery pricing in
       // some environments. Keep this route independently configurable.
       origin: "order",
-      auth: false,
+      auth: true,
       headers: {
-        authorization: `Bearer ${token}`,
         ...(partnerToken ? { "x-partner-token": partnerToken } : {}),
       },
       body: payload,
@@ -599,11 +593,10 @@ export async function createDaribarOrder(
 
 /** Card checkout is complete only when Daribar returns a safe hosted payment URL. */
 export async function createDaribarOrderWithPaymentLink(
-  accessToken: string,
   payload: DaribarOrderPayload,
 ): Promise<DaribarOrderWithPaymentLink> {
   if (payload.payment_method === "in_place") throw new DaribarCheckoutError(400, "online_payment_required");
-  const order = await createDaribarOrder(accessToken, payload);
+  const order = await createDaribarOrder(payload);
   if (!order.paymentUrl || order.paymentUrlRejected) throw new DaribarCheckoutError(502, "daribar_payment_link_unavailable");
   return { ...order, paymentUrl: order.paymentUrl };
 }

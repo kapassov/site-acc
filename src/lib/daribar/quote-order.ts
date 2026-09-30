@@ -8,7 +8,7 @@ import {
 import { mapLocalPharmacyToDaribar, mapQuoteLinesToDaribar } from "./delivery-mapping.ts";
 
 type Input = {
-  quote: SignedQuote; items: CanonicalCheckoutItem[]; accessToken: string; phone: string;
+  quote: SignedQuote; items: CanonicalCheckoutItem[]; phone: string;
   delivery: "courier" | "pickup"; payment: "card" | "cash";
   city: string; address: string; comment?: string; channel?: "web" | "mobile_app";
   deliveryDetails?: DeliveryDetails | null;
@@ -49,5 +49,5 @@ export async function createDaribarOrderForQuote(input: Input): Promise<DaribarO
   // Always return the provider order first. The route persists it before it
   // validates the hosted payment link, so a missing link cannot orphan a real
   // Daribar order or invite the customer to create a duplicate.
-  return createDaribarOrder(input.accessToken, payload);
+  return createDaribarOrder(payload);
 }

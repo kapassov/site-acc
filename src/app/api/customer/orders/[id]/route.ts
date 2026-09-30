@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { customerSession } from "@/lib/customerSession";
-import { daribarServiceToken } from "@/lib/daribar/config";
 import { getDaribarCustomerOrderPayment, type DaribarOrderPaymentSnapshot } from "@/lib/daribar/order-payments";
 import { getDaribarCustomerOrder, type DaribarOrderSnapshot } from "@/lib/daribar/order-status";
 import { daribarProductSlug, daribarSkuFromProductId } from "@/lib/daribar/ids";
@@ -157,11 +156,9 @@ export async function GET(
   let payment: DaribarOrderPaymentSnapshot | null | undefined;
   let paymentAvailable = false;
   if (order.sourceSystem === "daribar") {
-    const accessToken = daribarServiceToken();
-    if (!accessToken) return NextResponse.json({ error: "orders_unavailable" }, { status: 503, headers: PRIVATE_HEADERS });
     const [orderResult, paymentResult] = await Promise.allSettled([
-      getDaribarCustomerOrder(accessToken, order.sourceOrderId),
-      getDaribarCustomerOrderPayment(accessToken, order.sourceOrderId),
+      getDaribarCustomerOrder(order.sourceOrderId),
+      getDaribarCustomerOrderPayment(order.sourceOrderId),
     ]);
     if (orderResult.status === "fulfilled") {
       snapshot = orderResult.value;

@@ -1,5 +1,4 @@
 import { daribarJson, DaribarHttpError } from "./client.ts";
-import { daribarIntegrationCode } from "./config.ts";
 import { isDaribarSku } from "./ids.ts";
 
 const SOURCE_CODE = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -194,8 +193,9 @@ export async function searchDaribarProductsV3(input: {
     const payload = await daribarJson<{ status?: unknown; result?: unknown }>("/api/v3/products/search", {
       method: "POST",
       origin: "commerce",
+      // The v3 search contract is public; only the explicitly allow-listed
+      // integration header identifies our ASS integration.
       auth: false,
-      headers: { "X-Integration-Code": daribarIntegrationCode() },
       query: {
         city: city || undefined,
         source_code: sourceCode || undefined,

@@ -44,13 +44,14 @@ test("Daribar price response reconciles SKU, stock, item total and cheapest deli
   assert.equal(parseDaribarDeliveryOffer(mismatch, expected), null);
 });
 
-test("public prices sends customer JWT and handles omitted item source_code", async () => {
+test("public prices sends the server B2B token and handles omitted item source_code", async () => {
   const oldFetch = globalThis.fetch;
   const old = { enabled: process.env.DARIBAR_ENABLED, delivery: process.env.DARIBAR_DELIVERY_ENABLED,
-    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED };
+    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED, service: process.env.DARIBAR_SERVICE_TOKEN };
   process.env.DARIBAR_ENABLED = "true";
   process.env.DARIBAR_DELIVERY_ENABLED = "true";
   process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED = "true";
+  process.env.DARIBAR_SERVICE_TOKEN = "a".repeat(20);
   try {
     globalThis.fetch = async (url, init) => {
       assert.equal(new URL(String(url)).pathname, "/public/api/v2/delivery/prices");
@@ -63,12 +64,13 @@ test("public prices sends customer JWT and handles omitted item source_code", as
       return Response.json({ status: "success", result: offer });
     };
     const offer = await deliveryForPharmacy({ sourceCode: "apteka_almaty_001", items: expected,
-      destination: { address: "Алматы, Абая, 123" }, accessToken: "a".repeat(20) });
+      destination: { address: "Алматы, Абая, 123" } });
     assert.equal(offer.total, 1550);
   } finally {
     globalThis.fetch = oldFetch;
     for (const [key, value] of Object.entries({ DARIBAR_ENABLED: old.enabled,
-      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery })) {
+      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery,
+      DARIBAR_SERVICE_TOKEN: old.service })) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
@@ -77,10 +79,11 @@ test("public prices sends customer JWT and handles omitted item source_code", as
 test("public city best uses the documented endpoint and refuses a missing route", async () => {
   const oldFetch = globalThis.fetch;
   const old = { enabled: process.env.DARIBAR_ENABLED, delivery: process.env.DARIBAR_DELIVERY_ENABLED,
-    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED };
+    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED, service: process.env.DARIBAR_SERVICE_TOKEN };
   process.env.DARIBAR_ENABLED = "true";
   process.env.DARIBAR_DELIVERY_ENABLED = "true";
   process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED = "true";
+  process.env.DARIBAR_SERVICE_TOKEN = "a".repeat(20);
   try {
     globalThis.fetch = async (url, init) => {
       assert.equal(new URL(String(url)).pathname, "/public/api/v2/delivery/best");
@@ -90,12 +93,13 @@ test("public city best uses the documented endpoint and refuses a missing route"
       return new Response("Not Found", { status: 404 });
     };
     await assert.rejects(bestDeliveryInCity({ city: "Алматы", sourceCode: "apteka_almaty_001",
-      items: expected, destination: { address: "Алматы, Абая, 123" }, accessToken: "a".repeat(20) }),
+      items: expected, destination: { address: "Алматы, Абая, 123" } }),
     error => error instanceof DaribarDeliveryError && error.code === "delivery_endpoint_not_available");
   } finally {
     globalThis.fetch = oldFetch;
     for (const [key, value] of Object.entries({ DARIBAR_ENABLED: old.enabled,
-      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery })) {
+      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery,
+      DARIBAR_SERVICE_TOKEN: old.service })) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
@@ -104,10 +108,11 @@ test("public city best uses the documented endpoint and refuses a missing route"
 test("public city best parses a complete Daribar offer and keeps the selected source_code", async () => {
   const oldFetch = globalThis.fetch;
   const old = { enabled: process.env.DARIBAR_ENABLED, delivery: process.env.DARIBAR_DELIVERY_ENABLED,
-    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED };
+    publicDelivery: process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED, service: process.env.DARIBAR_SERVICE_TOKEN };
   process.env.DARIBAR_ENABLED = "true";
   process.env.DARIBAR_DELIVERY_ENABLED = "true";
   process.env.DARIBAR_PUBLIC_DELIVERY_ENABLED = "true";
+  process.env.DARIBAR_SERVICE_TOKEN = "a".repeat(20);
   try {
     globalThis.fetch = async (_url, init) => {
       const body = JSON.parse(String(init.body));
@@ -119,13 +124,14 @@ test("public city best parses a complete Daribar offer and keeps the selected so
       return Response.json({ status: "success", result: { best, alternatives: [] } });
     };
     const result = await bestDeliveryInCity({ city: "Алматы", sourceCode: "apteka_almaty_001",
-      items: expected, destination: { address: "Алматы, Абая, 123" }, accessToken: "a".repeat(20) });
+      items: expected, destination: { address: "Алматы, Абая, 123" } });
     assert.equal(result.best.pharmacy.code, "apteka_almaty_001");
     assert.equal(result.best.total, 1550);
   } finally {
     globalThis.fetch = oldFetch;
     for (const [key, value] of Object.entries({ DARIBAR_ENABLED: old.enabled,
-      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery })) {
+      DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_PUBLIC_DELIVERY_ENABLED: old.publicDelivery,
+      DARIBAR_SERVICE_TOKEN: old.service })) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
@@ -172,7 +178,7 @@ test("courier claim is linked to the order and carries the full delivery address
     eta: 45, distance: 2.4, daribarSourceCode: "apteka_almaty_001", pharmacyId: "sloc_test",
     destinationHash: "0".repeat(64), quotedAt: new Date().toISOString() };
   const payload = buildDaribarDeliveryClaimPayload({
-    accessToken: "x".repeat(20), orderId: "order-123", quote, city: "Алматы",
+    orderId: "order-123", quote, city: "Алматы",
     address: "ул. Абая, 123", phone: "+7 (700) 123-45-67", name: "Иван",
     orderPrice: 1790, comment: "Позвоните",
     deliveryDetails: { placeType: "apartment", unit: "45", entrance: "2", floor: "5",
@@ -197,13 +203,15 @@ test("claim response is parsed fail-closed", () => {
     error => error instanceof DaribarDeliveryClaimError && error.code === "delivery_claim_invalid_response");
 });
 
-test("claim call uses customer authentication and a separate optional partner token", async () => {
+test("claim call uses server B2B authentication and a separate optional partner token", async () => {
   const previousFetch = globalThis.fetch;
   const old = { enabled: process.env.DARIBAR_ENABLED, delivery: process.env.DARIBAR_DELIVERY_ENABLED,
-    origin: process.env.DARIBAR_COMMERCE_API_URL, partner: process.env.DARIBAR_PARTNER_TOKEN };
+    origin: process.env.DARIBAR_COMMERCE_API_URL, partner: process.env.DARIBAR_PARTNER_TOKEN,
+    service: process.env.DARIBAR_SERVICE_TOKEN };
   process.env.DARIBAR_ENABLED = "true"; process.env.DARIBAR_DELIVERY_ENABLED = "true";
   process.env.DARIBAR_COMMERCE_API_URL = "https://prod-backoffice.daribar.com";
   process.env.DARIBAR_PARTNER_TOKEN = "partner-token-1234567890";
+  process.env.DARIBAR_SERVICE_TOKEN = "a".repeat(20);
   try {
     globalThis.fetch = async (url, init) => {
       assert.equal(new URL(String(url)).pathname, "/api/v2/delivery/claim");
@@ -218,14 +226,14 @@ test("claim call uses customer authentication and a separate optional partner to
       price: 650, itemsPrice: 900, orderItems: [{ sku: "1234567890", countDesired: 2, pharmacyCount: 5 }],
       eta: 55, distance: 2.4, daribarSourceCode: "apteka_almaty_001", pharmacyId: "sloc_test",
       destinationHash: "0".repeat(64), quotedAt: new Date().toISOString() };
-    const claim = await createDaribarDeliveryClaim({ accessToken: "a".repeat(20), orderId: "order-123",
+    const claim = await createDaribarDeliveryClaim({ orderId: "order-123",
       quote, city: "Алматы", address: "Абая, 1", phone: "77001234567", orderPrice: 1550 });
     assert.equal(claim.id, "claim-2");
   } finally {
     globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries({ DARIBAR_ENABLED: old.enabled,
       DARIBAR_DELIVERY_ENABLED: old.delivery, DARIBAR_COMMERCE_API_URL: old.origin,
-      DARIBAR_PARTNER_TOKEN: old.partner })) {
+      DARIBAR_PARTNER_TOKEN: old.partner, DARIBAR_SERVICE_TOKEN: old.service })) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }

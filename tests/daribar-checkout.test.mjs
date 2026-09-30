@@ -34,15 +34,15 @@ test("Daribar checkout verifies exact SKU, stock, pharmacy and server prices", a
   assert.doesNotMatch(source, /input\.(?:price|total|unitPrice)/);
 });
 
-test("Daribar order creation uses user auth and maps storefront delivery/payment", async () => {
+test("Daribar order creation uses server B2B auth and maps storefront delivery/payment", async () => {
   const source = await readFile(CHECKOUT, "utf8");
 
   assert.match(source, /payment_method: input\.payment === "cash" \? "in_place" : "interpay"/);
   assert.match(source, /delivery_method: isPickup \? "self" : deliveryMethod\(deliveryQuote!\.provider\)/);
   assert.match(source, /"\/api\/v2\/orders"/);
   assert.match(source, /origin: "order"/);
-  assert.match(source, /auth: false/);
-  assert.match(source, /authorization: `Bearer \$\{token\}`/);
+  assert.match(source, /auth: true/);
+  assert.doesNotMatch(source, /authorization: `Bearer \$\{token\}`/);
   assert.match(source, /DARIBAR_PARTNER_TOKEN|daribarPartnerToken/);
   assert.match(source, /daribarOrderItemsFromOffer/);
 });
