@@ -34,6 +34,14 @@ test("PostgreSQL search supports an exact last-word prefix", () => {
   assert.equal(result.search.matchType, "exact");
 });
 
+test("generic plural syringe query ranks ordinary syringes ahead of medicines supplied in syringes", () => {
+  const result = searchDaribarPostgresProducts({ query: "шприцы", products: [
+    product("MED", "Фазлодекс 250 мг/5 мл шприцы с безопасными стерильными иглами №2"),
+    product("DEVICE", "Шприц трехкомпонентный Bioject Budget 5 мл"),
+  ] });
+  assert.deepEqual(result.products.map((value) => value.sku), ["DEVICE", "MED"]);
+});
+
 test("PostgreSQL search includes brands found by active ingredient/MNN", () => {
   const result = searchDaribarPostgresProducts({ query: "панкреатин", products });
   assert.deepEqual(new Set(result.products.map((value) => value.sku)), new Set(["PAN", "CREON"]));

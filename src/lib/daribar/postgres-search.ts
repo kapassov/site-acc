@@ -11,6 +11,11 @@ import type { ProductSearchMetadata } from "../search/search-metadata.ts";
 type SearchHit = { product: Product; field: "name" | "mnn" };
 type IndexedProduct = { product: Product; nameWords: string[]; mnnWords: string[] };
 
+const GENERIC_QUERY_ALIASES = new Map([
+  ["шприцы", "шприц"],
+  ["шприцов", "шприц"],
+]);
+
 const searchIndexes = new WeakMap<readonly Product[], IndexedProduct[]>();
 
 function words(value: string): string[] {
@@ -108,10 +113,14 @@ export function searchDaribarPostgresProducts(input: {
   }
 
   const typoPasses: (0 | 1 | 2)[] = input.exact ? [0] : [0, 1, 2];
+  const genericAlias = GENERIC_QUERY_ALIASES.get(parsed.nameQuery);
+  const variants = genericAlias
+    ? [...parsed.variants, { value: genericAlias, kind: "alias" as const }]
+    : parsed.variants;
   for (const typos of typoPasses) {
     const byProduct = new Map<string, SearchHit>();
     let matchedType: ProductSearchMetadata["matchType"] = typos ? "typo" : "exact";
-    for (const variant of parsed.variants) {
+    for (const variant of variants) {
       const hits = matchingHits(input.products, parsed, variant.value, typos);
       if (hits.length && byProduct.size === 0) matchedType = variantMatchType(variant.kind, typos);
       for (const hit of hits) {
@@ -122,10 +131,16 @@ export function searchDaribarPostgresProducts(input: {
     }
     if (byProduct.size) {
       const hits = [...byProduct.values()];
-      const nameHits = rankProductSearchCandidates(
+      let nameHits = rankProductSearchCandidates(
         hits.filter((hit) => hit.field === "name").map((hit) => hit.product),
         parsed,
       );
+      if (genericAlias === "шприц") {
+        nameHits = nameHits.sort((left, right) => (
+          Number(!normalizeProductSearchText(left.name).startsWith("шприц "))
+          - Number(!normalizeProductSearchText(right.name).startsWith("шприц "))
+        ));
+      }
       const ingredientHits = hits.filter((hit) => hit.field === "mnn").map((hit) => hit.product)
         .sort((left, right) => Number(right.inStock) - Number(left.inStock)
           || left.name.localeCompare(right.name, "ru"));

@@ -66,6 +66,7 @@ export class DaribarCatalogDatabaseError extends Error {
 const runtime = globalThis as typeof globalThis & {
   __daribarDatabaseSnapshot?: { expiresAt: number; value: DaribarDatabaseSnapshot };
 };
+const DATABASE_SNAPSHOT_CACHE_MS = 5 * 60_000;
 
 function validProduct(value: unknown): value is Product {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -172,7 +173,7 @@ export async function readDaribarCatalogDatabase(
     ...(availabilityValidUntil ? { availabilityValidUntil } : {}),
     availabilityStale: !availabilityValidUntil || Date.parse(availabilityValidUntil) <= now,
   };
-  if (!database) runtime.__daribarDatabaseSnapshot = { expiresAt: now + 30_000, value };
+  if (!database) runtime.__daribarDatabaseSnapshot = { expiresAt: now + DATABASE_SNAPSHOT_CACHE_MS, value };
   return value;
 }
 
